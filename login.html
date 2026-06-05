@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign In — WhatsApp Suite by AcquiHire Tech</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/auth.css">
+  <script src="js/favicon.js"></script>
+</head>
+<body>
+  <div class="auth-layout">
+    <div class="auth-left">
+      <div class="auth-brand">
+        <div class="auth-brand-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z" fill="currentColor"/>
+            <path d="M12 2C6.477 2 2 6.477 2 12c0 1.89.525 3.66 1.438 5.168L2 22l4.832-1.438A9.955 9.955 0 0012 22c5.523 0 10-4.477 10-10S17.523 2 12 2zm0 18a7.96 7.96 0 01-4.106-1.138l-.294-.176-2.866.852.852-2.866-.176-.294A7.96 7.96 0 014 12c0-4.411 3.589-8 8-8s8 3.589 8 8-3.589 8-8 8z" fill="currentColor"/>
+          </svg>
+        </div>
+        <h1>WhatsApp Suite</h1>
+        <p class="auth-brand-sub">by AcquiHire Tech</p>
+      </div>
+      <div class="auth-hero">
+        <h2>Manage all your WhatsApp accounts from one dashboard</h2>
+        <ul class="auth-features">
+          <li>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            Connect up to 25 WhatsApp Business numbers
+          </li>
+          <li>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            Real-time analytics and campaign tracking
+          </li>
+          <li>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            Automated chatbots and template management
+          </li>
+          <li>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            Enterprise-grade API with webhook support
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="auth-right">
+      <div class="auth-card">
+        <h2>Welcome back</h2>
+        <p class="auth-subtitle">Sign in to your WhatsApp Suite account</p>
+
+        <div class="auth-alert" id="authAlert" style="display:none"></div>
+
+        <form id="loginForm" autocomplete="on">
+          <div class="form-group">
+            <label class="form-label">Email Address</label>
+            <input type="email" class="form-input" id="loginEmail" placeholder="you@company.com" required autocomplete="email">
+          </div>
+          <div class="form-group">
+            <label class="form-label">
+              Password
+              <a href="#" class="form-link">Forgot password?</a>
+            </label>
+            <div class="password-field">
+              <input type="password" class="form-input" id="loginPassword" placeholder="Enter your password" required autocomplete="current-password">
+              <button type="button" class="toggle-password" tabindex="-1">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-full" id="loginBtn">
+            <span class="btn-text">Sign In</span>
+            <span class="btn-loader" style="display:none"></span>
+          </button>
+        </form>
+
+        <p class="auth-footer-text">
+          Don't have an account? <a href="/register">Create one</a>
+        </p>
+      </div>
+
+      <p class="auth-legal">
+        By signing in, you agree to our Terms of Service and Privacy Policy.
+      </p>
+    </div>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script>
+    redirectIfLoggedIn();
+
+    const form = document.getElementById('loginForm');
+    const alert = document.getElementById('authAlert');
+    const btn = document.getElementById('loginBtn');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('loginEmail').value.trim();
+      const password = document.getElementById('loginPassword').value;
+
+      btn.querySelector('.btn-text').style.display = 'none';
+      btn.querySelector('.btn-loader').style.display = 'inline-block';
+      btn.disabled = true;
+
+      const result = await API.login(email, password);
+
+      btn.querySelector('.btn-text').style.display = 'inline';
+      btn.querySelector('.btn-loader').style.display = 'none';
+      btn.disabled = false;
+
+      if (result.success) {
+        if (result.pendingVerification?.email || result.pendingVerification?.phone) {
+          window.location.href = '/verify';
+        } else {
+          window.location.href = '/';
+        }
+      } else {
+        showAlert(result.message, 'error');
+      }
+    });
+
+    function showAlert(msg, type) {
+      alert.textContent = msg;
+      alert.className = 'auth-alert ' + type;
+      alert.style.display = 'block';
+    }
+
+    // Toggle password visibility
+    document.querySelectorAll('.toggle-password').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const input = btn.previousElementSibling;
+        input.type = input.type === 'password' ? 'text' : 'password';
+      });
+    });
+  </script>
+</body>
+</html>

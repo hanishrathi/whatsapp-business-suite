@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Verify Account — WhatsApp Suite</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/auth.css">
+  <script src="js/favicon.js"></script>
+</head>
+<body>
+  <div class="verify-layout">
+    <div class="verify-card">
+      <div class="auth-brand small">
+        <div class="auth-brand-icon small">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z" fill="currentColor"/>
+            <path d="M12 2C6.477 2 2 6.477 2 12c0 1.89.525 3.66 1.438 5.168L2 22l4.832-1.438A9.955 9.955 0 0012 22c5.523 0 10-4.477 10-10S17.523 2 12 2z" fill="currentColor"/>
+          </svg>
+        </div>
+        <span>WhatsApp Suite</span>
+      </div>
+
+      <!-- Step indicators -->
+      <div class="verify-steps" id="verifySteps">
+        <div class="verify-step active" data-step="email">
+          <div class="verify-step-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          </div>
+          <span>Email</span>
+        </div>
+        <div class="verify-step-line"></div>
+        <div class="verify-step" data-step="phone">
+          <div class="verify-step-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/></svg>
+          </div>
+          <span>WhatsApp</span>
+        </div>
+      </div>
+
+      <!-- Email Verification -->
+      <div class="verify-panel active" id="emailPanel">
+        <div class="verify-hero-icon">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#25D366" stroke-width="1.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        </div>
+        <h2>Verify your email</h2>
+        <p class="verify-desc">We sent a 6-digit code to <strong id="userEmail">your email</strong></p>
+
+        <div class="auth-alert" id="emailAlert" style="display:none"></div>
+
+        <div class="otp-group">
+          <input type="text" maxlength="1" class="otp-input" data-otp="email" autofocus>
+          <input type="text" maxlength="1" class="otp-input" data-otp="email">
+          <input type="text" maxlength="1" class="otp-input" data-otp="email">
+          <input type="text" maxlength="1" class="otp-input" data-otp="email">
+          <input type="text" maxlength="1" class="otp-input" data-otp="email">
+          <input type="text" maxlength="1" class="otp-input" data-otp="email">
+        </div>
+
+        <button class="btn btn-full" id="verifyEmailBtn">
+          <span class="btn-text">Verify Email</span>
+          <span class="btn-loader" style="display:none"></span>
+        </button>
+
+        <p class="resend-text">
+          Didn't receive the code? <button class="resend-link" id="resendEmailBtn">Resend</button>
+        </p>
+      </div>
+
+      <!-- Phone Verification -->
+      <div class="verify-panel" id="phonePanel">
+        <div class="verify-hero-icon">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#25D366" stroke-width="1.5">
+            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z" fill="none" stroke="#25D366" stroke-width="1.5"/>
+            <path d="M12 2C6.477 2 2 6.477 2 12c0 1.89.525 3.66 1.438 5.168L2 22l4.832-1.438A9.955 9.955 0 0012 22c5.523 0 10-4.477 10-10S17.523 2 12 2z" fill="none" stroke="#25D366" stroke-width="1.5"/>
+          </svg>
+        </div>
+        <h2>Verify your WhatsApp</h2>
+        <p class="verify-desc">We sent a 6-digit code via WhatsApp to <strong id="userPhone">your phone</strong></p>
+
+        <div class="auth-alert" id="phoneAlert" style="display:none"></div>
+
+        <div class="otp-group">
+          <input type="text" maxlength="1" class="otp-input" data-otp="phone">
+          <input type="text" maxlength="1" class="otp-input" data-otp="phone">
+          <input type="text" maxlength="1" class="otp-input" data-otp="phone">
+          <input type="text" maxlength="1" class="otp-input" data-otp="phone">
+          <input type="text" maxlength="1" class="otp-input" data-otp="phone">
+          <input type="text" maxlength="1" class="otp-input" data-otp="phone">
+        </div>
+
+        <button class="btn btn-full" id="verifyPhoneBtn">
+          <span class="btn-text">Verify WhatsApp</span>
+          <span class="btn-loader" style="display:none"></span>
+        </button>
+
+        <p class="resend-text">
+          Didn't receive the code? <button class="resend-link" id="resendPhoneBtn">Resend</button>
+        </p>
+      </div>
+
+      <!-- Success -->
+      <div class="verify-panel" id="successPanel">
+        <div class="verify-hero-icon success">
+          <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#25D366" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        </div>
+        <h2>You're all set!</h2>
+        <p class="verify-desc">Your account is fully verified. Let's get started.</p>
+        <button class="btn btn-full" onclick="window.location.href='/'">Go to Dashboard</button>
+      </div>
+
+      <a href="#" class="skip-link" id="skipLink" onclick="window.location.href='/';return false;">Skip for now</a>
+    </div>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script>
+    if (!API.isLoggedIn()) window.location.href = '/login';
+
+    const user = API.getUser();
+    if (user) {
+      document.getElementById('userEmail').textContent = user.email || '';
+      document.getElementById('userPhone').textContent = user.phone || '';
+
+      // Skip already-verified steps
+      if (user.isEmailVerified && user.isPhoneVerified) {
+        window.location.href = '/';
+      } else if (user.isEmailVerified) {
+        showPanel('phone');
+      }
+    }
+
+    function showPanel(panel) {
+      document.querySelectorAll('.verify-panel').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.verify-step').forEach(s => s.classList.remove('active', 'done'));
+
+      if (panel === 'email') {
+        document.getElementById('emailPanel').classList.add('active');
+        document.querySelector('[data-step="email"]').classList.add('active');
+      } else if (panel === 'phone') {
+        document.getElementById('phonePanel').classList.add('active');
+        document.querySelector('[data-step="email"]').classList.add('done');
+        document.querySelector('[data-step="phone"]').classList.add('active');
+      } else if (panel === 'success') {
+        document.getElementById('successPanel').classList.add('active');
+        document.querySelector('[data-step="email"]').classList.add('done');
+        document.querySelector('[data-step="phone"]').classList.add('done');
+        document.getElementById('skipLink').style.display = 'none';
+      }
+    }
+
+    // OTP auto-advance
+    document.querySelectorAll('.otp-input').forEach((input, i, all) => {
+      const group = input.dataset.otp;
+      const siblings = [...all].filter(el => el.dataset.otp === group);
+      const idx = siblings.indexOf(input);
+
+      input.addEventListener('input', () => {
+        if (input.value.length === 1 && idx < siblings.length - 1) siblings[idx + 1].focus();
+      });
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Backspace' && !input.value && idx > 0) siblings[idx - 1].focus();
+      });
+      input.addEventListener('paste', (e) => {
+        const text = (e.clipboardData || window.clipboardData).getData('text').trim();
+        if (/^\d{6}$/.test(text)) {
+          siblings.forEach((inp, j) => inp.value = text[j]);
+          siblings[5].focus();
+          e.preventDefault();
+        }
+      });
+    });
+
+    function getOtp(group) {
+      return [...document.querySelectorAll(`.otp-input[data-otp="${group}"]`)].map(i => i.value).join('');
+    }
+
+    // Verify Email
+    document.getElementById('verifyEmailBtn').addEventListener('click', async () => {
+      const otp = getOtp('email');
+      if (otp.length !== 6) return showAlert('emailAlert', 'Please enter the full 6-digit code.', 'error');
+
+      const btn = document.getElementById('verifyEmailBtn');
+      btn.querySelector('.btn-text').style.display = 'none';
+      btn.querySelector('.btn-loader').style.display = 'inline-block';
+
+      const result = await API.verifyEmail(otp);
+
+      btn.querySelector('.btn-text').style.display = 'inline';
+      btn.querySelector('.btn-loader').style.display = 'none';
+
+      if (result.success) {
+        const u = API.getUser(); u.isEmailVerified = true; API.setUser(u);
+        showPanel('phone');
+      } else {
+        showAlert('emailAlert', result.message, 'error');
+      }
+    });
+
+    // Verify Phone
+    document.getElementById('verifyPhoneBtn').addEventListener('click', async () => {
+      const otp = getOtp('phone');
+      if (otp.length !== 6) return showAlert('phoneAlert', 'Please enter the full 6-digit code.', 'error');
+
+      const btn = document.getElementById('verifyPhoneBtn');
+      btn.querySelector('.btn-text').style.display = 'none';
+      btn.querySelector('.btn-loader').style.display = 'inline-block';
+
+      const result = await API.verifyPhone(otp);
+
+      btn.querySelector('.btn-text').style.display = 'inline';
+      btn.querySelector('.btn-loader').style.display = 'none';
+
+      if (result.success) {
+        const u = API.getUser(); u.isPhoneVerified = true; API.setUser(u);
+        showPanel('success');
+      } else {
+        showAlert('phoneAlert', result.message, 'error');
+      }
+    });
+
+    // Resend
+    document.getElementById('resendEmailBtn').addEventListener('click', async () => {
+      const r = await API.resendOtp('email');
+      showAlert('emailAlert', r.message, r.success ? 'success' : 'error');
+    });
+    document.getElementById('resendPhoneBtn').addEventListener('click', async () => {
+      const r = await API.resendOtp('phone');
+      showAlert('phoneAlert', r.message, r.success ? 'success' : 'error');
+    });
+
+    function showAlert(id, msg, type) {
+      const el = document.getElementById(id);
+      el.textContent = msg;
+      el.className = 'auth-alert ' + type;
+      el.style.display = 'block';
+    }
+  </script>
+</body>
+</html>

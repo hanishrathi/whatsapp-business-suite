@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Profile — WhatsApp Suite</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/auth.css">
+  <link rel="stylesheet" href="css/dashboard.css">
+  <script src="js/favicon.js"></script>
+</head>
+<body class="profile-page-body">
+  <div class="profile-layout">
+    <header class="profile-topbar">
+      <a href="/" class="profile-back">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+        Back to Dashboard
+      </a>
+      <h1>My Profile</h1>
+      <div></div>
+    </header>
+
+    <div class="profile-content">
+      <!-- Avatar Section -->
+      <div class="profile-card avatar-card">
+        <div class="profile-avatar-section">
+          <div class="profile-avatar-wrap">
+            <div class="profile-avatar" id="profileAvatar">
+              <span id="avatarInitials">??</span>
+              <img id="avatarImg" src="" alt="" style="display:none">
+            </div>
+            <label class="avatar-upload-btn" for="avatarInput" title="Upload photo">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            </label>
+            <input type="file" id="avatarInput" accept="image/jpeg,image/png,image/webp" style="display:none">
+          </div>
+          <div class="profile-avatar-info">
+            <h2 id="profileName">Loading...</h2>
+            <p id="profileEmail">loading@...</p>
+            <div class="profile-badges">
+              <span class="badge badge-green" id="badgePlan">Free</span>
+              <span class="badge badge-blue" id="badgeAccounts">0 / 25 accounts</span>
+            </div>
+          </div>
+        </div>
+        <button class="btn btn-sm btn-outline" id="removeAvatarBtn" style="display:none">Remove Photo</button>
+      </div>
+
+      <!-- Profile Details -->
+      <div class="profile-card">
+        <div class="profile-card-header">
+          <h3>Personal Information</h3>
+        </div>
+        <form id="profileForm">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Full Name</label>
+              <input type="text" class="form-input" id="profName" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Company</label>
+              <input type="text" class="form-input" id="profCompany">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Email <span class="verified-badge" id="emailBadge" style="display:none">Verified</span></label>
+              <input type="email" class="form-input" id="profEmail" disabled>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Phone <span class="verified-badge" id="phoneBadge" style="display:none">Verified</span></label>
+              <input type="tel" class="form-input" id="profPhone" disabled>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Timezone</label>
+            <select class="form-select full" id="profTimezone">
+              <option value="Asia/Kolkata">Asia/Kolkata (IST)</option>
+              <option value="America/New_York">America/New_York (EST)</option>
+              <option value="America/Los_Angeles">America/Los_Angeles (PST)</option>
+              <option value="Europe/London">Europe/London (GMT)</option>
+              <option value="Europe/Berlin">Europe/Berlin (CET)</option>
+              <option value="Asia/Dubai">Asia/Dubai (GST)</option>
+              <option value="Asia/Singapore">Asia/Singapore (SGT)</option>
+              <option value="Australia/Sydney">Australia/Sydney (AEST)</option>
+            </select>
+          </div>
+          <div class="profile-alert" id="profileAlert" style="display:none"></div>
+          <button type="submit" class="btn">Save Changes</button>
+        </form>
+      </div>
+
+      <!-- Change Password -->
+      <div class="profile-card">
+        <div class="profile-card-header">
+          <h3>Change Password</h3>
+        </div>
+        <form id="passwordForm">
+          <div class="form-group">
+            <label class="form-label">Current Password</label>
+            <input type="password" class="form-input" id="currentPw" required>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">New Password</label>
+              <input type="password" class="form-input" id="newPw" required minlength="8">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Confirm New Password</label>
+              <input type="password" class="form-input" id="confirmPw" required minlength="8">
+            </div>
+          </div>
+          <div class="profile-alert" id="pwAlert" style="display:none"></div>
+          <button type="submit" class="btn">Update Password</button>
+        </form>
+      </div>
+
+      <!-- Danger Zone -->
+      <div class="profile-card danger-card">
+        <div class="profile-card-header">
+          <h3>Danger Zone</h3>
+        </div>
+        <div class="danger-zone">
+          <div class="danger-info">
+            <h4>Delete Account</h4>
+            <p>Permanently delete your account and all associated WhatsApp connections. This action cannot be undone.</p>
+          </div>
+          <button class="btn btn-danger" id="deleteAccountBtn">Delete My Account</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Confirmation Modal -->
+  <div class="modal-overlay" id="deleteModal">
+    <div class="modal small">
+      <div class="modal-header">
+        <h3>Delete Account</h3>
+        <button class="modal-close" onclick="document.getElementById('deleteModal').classList.remove('open')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p class="delete-warning">This will permanently delete your account, all WhatsApp connections, conversations, and data. This action <strong>cannot be undone</strong>.</p>
+        <div class="form-group">
+          <label class="form-label">Enter your password to confirm</label>
+          <input type="password" class="form-input" id="deletePassword" placeholder="Your password">
+        </div>
+        <div class="profile-alert" id="deleteAlert" style="display:none"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="document.getElementById('deleteModal').classList.remove('open')">Cancel</button>
+        <button class="btn btn-danger" id="confirmDeleteBtn">Delete Forever</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script>
+    if (!requireAuth()) throw '';
+
+    // Load profile data
+    async function loadProfile() {
+      const result = await API.getProfile();
+      if (!result.success) return;
+
+      const u = result.user;
+      document.getElementById('profileName').textContent = u.name;
+      document.getElementById('profileEmail').textContent = u.email;
+      document.getElementById('avatarInitials').textContent = u.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+      document.getElementById('badgePlan').textContent = (u.plan || 'free').charAt(0).toUpperCase() + (u.plan || 'free').slice(1);
+      document.getElementById('badgeAccounts').textContent = `${result.accountCount} / ${result.maxAccounts} accounts`;
+
+      // Form fields
+      document.getElementById('profName').value = u.name;
+      document.getElementById('profCompany').value = u.company || '';
+      document.getElementById('profEmail').value = u.email;
+      document.getElementById('profPhone').value = u.phone;
+      document.getElementById('profTimezone').value = u.timezone || 'Asia/Kolkata';
+
+      if (u.isEmailVerified) document.getElementById('emailBadge').style.display = 'inline';
+      if (u.isPhoneVerified) document.getElementById('phoneBadge').style.display = 'inline';
+
+      // Avatar
+      if (u.avatar) {
+        document.getElementById('avatarImg').src = u.avatar;
+        document.getElementById('avatarImg').style.display = 'block';
+        document.getElementById('avatarInitials').style.display = 'none';
+        document.getElementById('removeAvatarBtn').style.display = 'inline-flex';
+      }
+    }
+
+    loadProfile();
+
+    // Upload avatar
+    document.getElementById('avatarInput').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      if (file.size > 5 * 1024 * 1024) return alert('File too large. Maximum 5MB.');
+
+      const result = await API.uploadAvatar(file);
+      if (result.success) {
+        document.getElementById('avatarImg').src = result.avatar + '?t=' + Date.now();
+        document.getElementById('avatarImg').style.display = 'block';
+        document.getElementById('avatarInitials').style.display = 'none';
+        document.getElementById('removeAvatarBtn').style.display = 'inline-flex';
+      }
+    });
+
+    // Remove avatar
+    document.getElementById('removeAvatarBtn').addEventListener('click', async () => {
+      const result = await API.removeAvatar();
+      if (result.success) {
+        document.getElementById('avatarImg').style.display = 'none';
+        document.getElementById('avatarInitials').style.display = 'flex';
+        document.getElementById('removeAvatarBtn').style.display = 'none';
+      }
+    });
+
+    // Save profile
+    document.getElementById('profileForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const result = await API.updateProfile({
+        name: document.getElementById('profName').value.trim(),
+        company: document.getElementById('profCompany').value.trim(),
+        timezone: document.getElementById('profTimezone').value,
+      });
+      showAlert('profileAlert', result.message, result.success ? 'success' : 'error');
+      if (result.success) {
+        document.getElementById('profileName').textContent = result.user.name;
+        document.getElementById('avatarInitials').textContent = result.user.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+      }
+    });
+
+    // Change password
+    document.getElementById('passwordForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const newPw = document.getElementById('newPw').value;
+      const confirmPw = document.getElementById('confirmPw').value;
+      if (newPw !== confirmPw) return showAlert('pwAlert', 'Passwords do not match.', 'error');
+
+      const result = await API.changePassword(
+        document.getElementById('currentPw').value,
+        newPw
+      );
+      showAlert('pwAlert', result.message, result.success ? 'success' : 'error');
+      if (result.success) {
+        document.getElementById('currentPw').value = '';
+        document.getElementById('newPw').value = '';
+        document.getElementById('confirmPw').value = '';
+      }
+    });
+
+    // Delete account
+    document.getElementById('deleteAccountBtn').addEventListener('click', () => {
+      document.getElementById('deleteModal').classList.add('open');
+    });
+
+    document.getElementById('confirmDeleteBtn').addEventListener('click', async () => {
+      const pw = document.getElementById('deletePassword').value;
+      if (!pw) return showAlert('deleteAlert', 'Password required.', 'error');
+
+      const result = await API.deleteUserAccount(pw);
+      if (result.success) {
+        window.location.href = '/login';
+      } else {
+        showAlert('deleteAlert', result.message, 'error');
+      }
+    });
+
+    function showAlert(id, msg, type) {
+      const el = document.getElementById(id);
+      el.textContent = msg;
+      el.className = 'profile-alert ' + type;
+      el.style.display = 'block';
+      setTimeout(() => el.style.display = 'none', 5000);
+    }
+  </script>
+</body>
+</html>
