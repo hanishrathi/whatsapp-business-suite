@@ -117,6 +117,38 @@
         </form>
       </div>
 
+      <!-- Two-Factor Authentication (2FA) -->
+      <div class="profile-card">
+        <div class="profile-card-header">
+          <h3>Two-Factor Authentication (2FA)</h3>
+          <p style="color:#6e6e73;font-size:13px;margin:4px 0 0;">Add a second step at login using Google Authenticator, Authy, or any TOTP app.</p>
+        </div>
+        <div id="mfaStatus" style="margin-bottom:14px;font-size:14px;"></div>
+
+        <!-- Setup view (hidden until "Enable" clicked) -->
+        <div id="mfaSetup" style="display:none;text-align:center;">
+          <p style="font-size:13px;color:#6e6e73;">1. Scan this QR code in your authenticator app:</p>
+          <img id="mfaQr" alt="2FA QR code" style="width:180px;height:180px;border-radius:12px;border:1px solid #e8e8ed;margin:8px auto;display:block;">
+          <p style="font-size:12px;color:#86868b;">Or enter this code manually:</p>
+          <code id="mfaSecret" style="display:inline-block;background:#f5f5f7;padding:8px 14px;border-radius:8px;letter-spacing:2px;font-size:13px;margin-bottom:12px;"></code>
+          <div class="form-group" style="max-width:240px;margin:0 auto;">
+            <label class="form-label">2. Enter the 6-digit code</label>
+            <input type="text" class="form-input" id="mfaCode" inputmode="numeric" maxlength="6" placeholder="000000" style="text-align:center;letter-spacing:6px;">
+          </div>
+          <button class="btn" id="mfaConfirmBtn" style="margin-top:10px;">Confirm &amp; Turn On</button>
+        </div>
+
+        <!-- Backup codes view -->
+        <div id="mfaBackup" style="display:none;">
+          <p style="font-size:13px;color:#1d1d1f;font-weight:600;">Save these backup codes somewhere safe. Each works once if you lose your phone:</p>
+          <pre id="mfaBackupCodes" style="background:#f5f5f7;padding:14px;border-radius:10px;font-size:14px;line-height:1.8;"></pre>
+        </div>
+
+        <div class="profile-alert" id="mfaAlert" style="display:none"></div>
+        <button class="btn" id="mfaEnableBtn" style="display:none;">Enable 2FA</button>
+        <button class="btn btn-danger" id="mfaDisableBtn" style="display:none;">Disable 2FA</button>
+      </div>
+
       <!-- Danger Zone -->
       <div class="profile-card danger-card">
         <div class="profile-card-header">
@@ -193,6 +225,71 @@
     }
 
     loadProfile();
+
+    /* ---------------- Two-Factor Authentication (2FA) ---------------- */
+    const mfaStatus = document.getElementById('mfaStatus');
+    const mfaSetup = document.getElementById('mfaSetup');
+    const mfaBackup = document.getElementById('mfaBackup');
+    const mfaEnableBtn = document.getElementById('mfaEnableBtn');
+    const mfaDisableBtn = document.getElementById('mfaDisableBtn');
+    const mfaConfirmBtn = document.getElementById('mfaConfirmBtn');
+    const mfaAlert = document.getElementById('mfaAlert');
+
+    function showMfaAlert(msg, type) {
+      mfaAlert.textContent = msg;
+      mfaAlert.className = 'profile-alert ' + type;
+      mfaAlert.style.display = 'block';
+      setTimeout(() => { mfaAlert.style.display = 'none'; }, 6000);
+    }
+
+    function renderMfaState(enabled) {
+      if (enabled) {
+        mfaStatus.innerHTML = '<span style="color:#25803b;font-weight:600;">● 2FA is ON</span> — your account is protected with an authenticator app.';
+        mfaEnableBtn.style.display = 'none';
+        mfaDisableBtn.style.display = 'inline-flex';
+        mfaSetup.style.display = 'none';
+      } else {
+        mfaStatus.innerHTML = '<span style="color:#86868b;font-weight:600;">○ 2FA is OFF</span> — turn it on for stronger account security.';
+        mfaEnableBtn.style.display = 'inline-flex';
+        mfaDisableBtn.style.display = 'none';
+      }
+    }
+
+    async function refreshMfa() {
+      const me = await API.getMe();
+      if (me.success) renderMfaState(me.user.mfaEnabled);
+    }
+    refreshMfa();
+
+    mfaEnableBtn.addEventListener('click', async () => {
+      const result = await API.setupMfa();
+      if (!result.success) return showMfaAlert(result.message || 'Could not start 2FA setup.', 'error');
+      document.getElementById('mfaQr').src = result.qr;
+      document.getElementById('mfaSecret').textContent = result.secret;
+      mfaSetup.style.display = 'block';
+      mfaEnableBtn.style.display = 'none';
+    });
+
+    mfaConfirmBtn.addEventListener('click', async () => {
+      const code = document.getElementById('mfaCode').value.trim();
+      if (!code) return showMfaAlert('Enter the 6-digit code from your app.', 'error');
+      const result = await API.enableMfa(code);
+      if (!result.success) return showMfaAlert(result.message || 'Incorrect code.', 'error');
+      mfaBackup.style.display = 'block';
+      document.getElementById('mfaBackupCodes').textContent = result.backupCodes.join('\n');
+      showMfaAlert('Two-factor authentication is now ON. Save your backup codes!', 'success');
+      renderMfaState(true);
+    });
+
+    mfaDisableBtn.addEventListener('click', async () => {
+      const pw = window.prompt('Enter your password to turn OFF two-factor authentication:');
+      if (!pw) return;
+      const result = await API.disableMfa(pw);
+      if (!result.success) return showMfaAlert(result.message || 'Could not disable 2FA.', 'error');
+      mfaBackup.style.display = 'none';
+      showMfaAlert('Two-factor authentication disabled.', 'success');
+      renderMfaState(false);
+    });
 
     // Upload avatar
     document.getElementById('avatarInput').addEventListener('change', async (e) => {

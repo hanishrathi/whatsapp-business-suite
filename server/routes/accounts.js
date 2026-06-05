@@ -2,8 +2,15 @@ const express = require('express');
 const router = express.Router();
 const WhatsAppAccount = require('../models/WhatsAppAccount');
 const { protect, requireVerified } = require('../middleware/auth');
+const { encrypt } = require('../utils/crypto');
+const { logAction } = require('../utils/audit');
 
 const MAX_ACCOUNTS = parseInt(process.env.MAX_WHATSAPP_ACCOUNTS || '25', 10);
+
+// phoneNumberId from Meta is always numeric — reject anything else (prevents URL/path injection).
+function isValidPhoneNumberId(v) {
+  return v === undefined || v === '' || /^\d{1,32}$/.test(v);
+}
 
 // GET /api/accounts — list all accounts for current user
 router.get('/', protect, async (req, res) => {
@@ -54,8 +61,8 @@ router.get('/:id', protect, async (req, res) => {
   }
 });
 
-// POST /api/accounts — create new WhatsApp account
-router.post('/', protect, async (req, res) => {
+// POST /api/accounts — create new WhatsApp account (requires verified email + phone)
+router.post('/', protect, requireVerified, async (req, res) => {
   try {
     // Check limit
     const count = await WhatsAppAccount.countActiveForUser(req.user._id);
@@ -81,6 +88,11 @@ router.post('/', protect, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid color code. Use hex format like #25D366.' });
     }
 
+    // Validate phoneNumberId format (numeric only) to prevent injection.
+    if (!isValidPhoneNumberId(phoneNumberId)) {
+      return res.status(400).json({ success: false, message: 'Invalid phone number ID.' });
+    }
+
     // Check duplicate phone for this user
     const existing = await WhatsAppAccount.findOne({
       userId: req.user._id,
@@ -103,29 +115,26 @@ router.post('/', protect, async (req, res) => {
       colorClass: colorClass || 'green',
       wabaId: wabaId || '',
       phoneNumberId: phoneNumberId || '',
-      accessToken: accessToken || '',
+      // F1: encrypt the access token at rest (AES-256-GCM).
+      accessToken: accessToken ? encrypt(accessToken) : '',
+      // F9: do NOT fake-verify. Real verification happens only after a Meta API check.
       status: wabaId ? 'connecting' : 'offline',
+      isVerified: false,
     });
 
-    // Simulate connection after a delay (in production this would be real API verification)
-    if (wabaId) {
-      setTimeout(async () => {
-        try {
-          await WhatsAppAccount.findByIdAndUpdate(account._id, {
-            status: 'online',
-            isVerified: true,
-            verifiedAt: new Date(),
-          });
-        } catch (e) {
-          console.error('Auto-verify error:', e);
-        }
-      }, 3000);
-    }
+    await logAction(req, 'whatsapp_account.create', {
+      targetId: account._id,
+      meta: { name: account.name, phone: account.phone },
+    });
+
+    // Never echo the access token back in the response.
+    const safeAccount = account.toObject();
+    delete safeAccount.accessToken;
 
     res.status(201).json({
       success: true,
-      account,
-      message: 'WhatsApp account added successfully.',
+      account: safeAccount,
+      message: 'WhatsApp account added. It will show as connected once verified with Meta.',
       remainingSlots: MAX_ACCOUNTS - count - 1,
     });
   } catch (err) {
@@ -137,8 +146,8 @@ router.post('/', protect, async (req, res) => {
   }
 });
 
-// PUT /api/accounts/:id — update account
-router.put('/:id', protect, async (req, res) => {
+// PUT /api/accounts/:id — update account (requires verified email + phone)
+router.put('/:id', protect, requireVerified, async (req, res) => {
   try {
     const allowed = [
       'name', 'category', 'categoryLabel', 'color', 'colorClass',
@@ -157,6 +166,16 @@ router.put('/:id', protect, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid color code.' });
     }
 
+    // Validate phoneNumberId if provided
+    if (!isValidPhoneNumberId(updates.phoneNumberId)) {
+      return res.status(400).json({ success: false, message: 'Invalid phone number ID.' });
+    }
+
+    // F1: encrypt access token at rest if it's being changed.
+    if (updates.accessToken !== undefined) {
+      updates.accessToken = updates.accessToken ? encrypt(updates.accessToken) : '';
+    }
+
     const account = await WhatsAppAccount.findOneAndUpdate(
       { _id: req.params.id, userId: req.user._id, isActive: true },
       updates,
@@ -167,7 +186,12 @@ router.put('/:id', protect, async (req, res) => {
       return res.status(404).json({ success: false, message: 'Account not found.' });
     }
 
-    res.json({ success: true, account, message: 'Account updated.' });
+    await logAction(req, 'whatsapp_account.update', { targetId: account._id });
+
+    const safeAccount = account.toObject();
+    delete safeAccount.accessToken;
+
+    res.json({ success: true, account: safeAccount, message: 'Account updated.' });
   } catch (err) {
     console.error('Update account error:', err);
     res.status(500).json({ success: false, message: 'Failed to update account.' });
@@ -175,7 +199,7 @@ router.put('/:id', protect, async (req, res) => {
 });
 
 // PUT /api/accounts/:id/color — update color only (quick action)
-router.put('/:id/color', protect, async (req, res) => {
+router.put('/:id/color', protect, requireVerified, async (req, res) => {
   try {
     const { color, colorClass } = req.body;
 
@@ -200,8 +224,8 @@ router.put('/:id/color', protect, async (req, res) => {
   }
 });
 
-// DELETE /api/accounts/:id — remove account (soft delete)
-router.delete('/:id', protect, async (req, res) => {
+// DELETE /api/accounts/:id — remove account (requires verified email + phone)
+router.delete('/:id', protect, requireVerified, async (req, res) => {
   try {
     const account = await WhatsAppAccount.findOneAndUpdate(
       { _id: req.params.id, userId: req.user._id, isActive: true },
@@ -212,6 +236,11 @@ router.delete('/:id', protect, async (req, res) => {
     if (!account) {
       return res.status(404).json({ success: false, message: 'Account not found.' });
     }
+
+    await logAction(req, 'whatsapp_account.delete', {
+      targetId: account._id,
+      meta: { name: account.name, phone: account.phone },
+    });
 
     const remaining = await WhatsAppAccount.countActiveForUser(req.user._id);
 

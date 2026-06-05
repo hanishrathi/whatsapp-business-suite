@@ -55,9 +55,15 @@ async function sendEmailOTP(email, otp, name) {
 async function sendWhatsAppOTP(phone, otp) {
   const phoneNumberId = process.env.WA_PHONE_NUMBER_ID;
   const accessToken = process.env.WA_ACCESS_TOKEN;
+  const isProd = process.env.NODE_ENV === 'production';
 
   if (!phoneNumberId || !accessToken) {
-    console.warn('WhatsApp OTP: Missing API credentials, skipping send.');
+    if (isProd) {
+      // Fail closed: never silently skip + log OTPs in production.
+      throw new Error('WhatsApp OTP not configured (WA_PHONE_NUMBER_ID / WA_ACCESS_TOKEN missing).');
+    }
+    // Development only: surface the code to the local console for testing.
+    console.warn('[DEV ONLY] WhatsApp OTP credentials missing — code printed for local testing.');
     console.log(`[DEV] WhatsApp OTP for ${phone}: ${otp}`);
     return;
   }
@@ -98,13 +104,14 @@ async function sendWhatsAppOTP(phone, otp) {
     });
 
     if (!response.ok) {
-      const err = await response.json();
-      console.error('WhatsApp OTP send error:', err);
+      // Log only a redacted summary — never the token or full error body.
+      console.error('WhatsApp OTP send failed with HTTP status:', response.status);
+      throw new Error('WhatsApp message send failed.');
     }
   } catch (err) {
-    console.error('WhatsApp OTP fetch error:', err.message);
-    // Fallback: log to console in dev
-    console.log(`[DEV FALLBACK] WhatsApp OTP for ${phone}: ${otp}`);
+    // Re-throw so callers know delivery failed; never log the OTP.
+    console.error('WhatsApp OTP delivery error:', err.message);
+    throw err;
   }
 }
 

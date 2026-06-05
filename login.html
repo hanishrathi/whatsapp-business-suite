@@ -104,7 +104,15 @@
       btn.querySelector('.btn-loader').style.display = 'inline-block';
       btn.disabled = true;
 
-      const result = await API.login(email, password);
+      let result = await API.login(email, password);
+
+      // If 2FA is enabled, ask for the 6-digit authenticator code and retry.
+      if (result.mfaRequired) {
+        const code = window.prompt('Two-factor authentication is on.\nEnter the 6-digit code from your authenticator app (or a backup code):');
+        if (code) {
+          result = await API.login(email, password, code.trim());
+        }
+      }
 
       btn.querySelector('.btn-text').style.display = 'inline';
       btn.querySelector('.btn-loader').style.display = 'none';
@@ -117,7 +125,7 @@
           window.location.href = '/';
         }
       } else {
-        showAlert(result.message, 'error');
+        showAlert(result.message || 'Login failed.', 'error');
       }
     });
 

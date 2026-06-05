@@ -9,16 +9,48 @@ const connectDB = require('./config/db');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Fail fast in production if critical secrets are missing — never boot insecure.
+if (process.env.NODE_ENV === 'production') {
+  const required = ['JWT_SECRET', 'ENCRYPTION_KEY', 'MONGO_URI'];
+  const missing = required.filter(k => !process.env[k]);
+  if (missing.length) {
+    console.error(`FATAL: missing required env vars in production: ${missing.join(', ')}`);
+    process.exit(1);
+  }
+  if (process.env.ENCRYPTION_KEY.length !== 64) {
+    console.error('FATAL: ENCRYPTION_KEY must be a 64-character hex string (32 bytes).');
+    process.exit(1);
+  }
+}
+
 // Trust Railway / Render proxy for HTTPS & rate-limiter
 app.set('trust proxy', 1);
 
-// Connect to MongoDB
-connectDB();
+// Connect to MongoDB (tests manage their own in-memory connection)
+if (process.env.NODE_ENV !== 'test') {
+  connectDB();
+}
 
-// Security middleware
+// Security middleware — F6: enable a working Content-Security-Policy.
+// Allows the inline scripts/styles and Google Fonts the app actually uses,
+// while blocking injected external scripts, framing (clickjacking), and plugins.
 app.use(helmet({
-  contentSecurityPolicy: false,
   crossOriginEmbedderPolicy: false,
+  contentSecurityPolicy: {
+    useDefaults: true,
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+      fontSrc: ["'self'", 'https://fonts.gstatic.com'],
+      imgSrc: ["'self'", 'data:', 'blob:'],
+      connectSrc: ["'self'"],
+      frameAncestors: ["'none'"],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+    },
+  },
 }));
 
 app.use(cors({
@@ -38,12 +70,15 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-// Rate limiting
+// Rate limiting (disabled under automated tests).
+const skipInTest = () => process.env.NODE_ENV === 'test';
+
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: skipInTest,
   message: { success: false, message: 'Too many attempts. Try again in 15 minutes.' },
 });
 
@@ -52,6 +87,7 @@ const apiLimiter = rateLimit({
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: skipInTest,
   message: { success: false, message: 'Rate limit exceeded.' },
 });
 
@@ -100,7 +136,8 @@ app.use((req, res) => {
 
 // Error handler
 app.use((err, req, res, next) => {
-  console.error('Server error:', err);
+  // F16: log only the message, never full objects that may contain secrets/PII.
+  console.error('Server error:', err.message);
 
   if (err.name === 'MulterError') {
     if (err.code === 'LIMIT_FILE_SIZE') {
@@ -117,14 +154,17 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`
+// Don't bind a port during tests (supertest uses the app object directly).
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`
   ╔══════════════════════════════════════════════════════╗
   ║   WhatsApp Business Suite — AcquiHire Tech          ║
   ║   Running on port ${PORT} · ${process.env.NODE_ENV || 'development'}                  ║
   ║   ${process.env.BASE_URL || 'http://localhost:' + PORT}              ║
   ╚══════════════════════════════════════════════════════╝
   `);
-});
+  });
+}
 
 module.exports = app;

@@ -37,7 +37,9 @@ const API = {
       const res = await fetch(url, { ...options, headers });
       const data = await res.json();
 
-      if (res.status === 401) {
+      // Only force-logout if we actually sent a token (i.e. a real session
+      // expired). A 401 during login/2FA just means bad credentials.
+      if (res.status === 401 && token) {
         this.logout();
         return data;
       }
@@ -78,15 +80,17 @@ const API = {
     return result;
   },
 
-  async login(email, password) {
+  async login(email, password, mfaCode) {
     const result = await this.request('/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, mfaCode }),
     });
     if (result.success) {
       this.setToken(result.token);
       this.setUser(result.user);
     }
+    // result.mfaRequired === true means caller must collect a 6-digit code
+    // and call login(email, password, code) again.
     return result;
   },
 
@@ -147,10 +151,36 @@ const API = {
   },
 
   async changePassword(currentPassword, newPassword) {
-    return this.request('/users/password', {
+    const result = await this.request('/users/password', {
       method: 'PUT',
       body: JSON.stringify({ currentPassword, newPassword }),
     });
+    // Server rotates the session on password change — store the fresh token
+    // so the current tab stays logged in.
+    if (result.success && result.token) this.setToken(result.token);
+    return result;
+  },
+
+  // ----- Two-factor authentication (2FA) -----
+  async setupMfa() {
+    return this.request('/users/mfa/setup', { method: 'POST', body: '{}' });
+  },
+  async enableMfa(code) {
+    const result = await this.request('/users/mfa/enable', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    });
+    if (result.success && result.token) this.setToken(result.token);
+    return result;
+  },
+  async disableMfa(password) {
+    return this.request('/users/mfa/disable', {
+      method: 'POST',
+      body: JSON.stringify({ password }),
+    });
+  },
+  async logoutAll() {
+    return this.request('/users/logout-all', { method: 'POST', body: '{}' });
   },
 
   async deleteUserAccount(password) {

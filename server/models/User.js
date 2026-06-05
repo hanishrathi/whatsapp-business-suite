@@ -54,19 +54,28 @@ const userSchema = new mongoose.Schema({
     default: 'free',
   },
 
-  // Verification
+  // Verification (OTPs are stored HASHED, never in plaintext)
   isEmailVerified: { type: Boolean, default: false },
   isPhoneVerified: { type: Boolean, default: false },
   emailOtp: { type: String, select: false },
   emailOtpExpiry: { type: Date, select: false },
+  emailOtpAttempts: { type: Number, default: 0, select: false },
   phoneOtp: { type: String, select: false },
   phoneOtpExpiry: { type: Date, select: false },
+  phoneOtpAttempts: { type: Number, default: 0, select: false },
 
   // Security
   lastLogin: { type: Date },
   loginAttempts: { type: Number, default: 0 },
   lockUntil: { type: Date },
   refreshTokens: [{ type: String, select: false }],
+  // F5: bumped on password change / logout-all / deletion to invalidate old JWTs.
+  tokenVersion: { type: Number, default: 0 },
+
+  // F4: TOTP multi-factor auth (secret + backup codes stored encrypted/hashed).
+  mfaEnabled: { type: Boolean, default: false },
+  mfaSecret: { type: String, select: false },
+  mfaBackupCodes: { type: [String], select: false, default: [] },
 
   // Account deletion
   deleteRequestedAt: { type: Date, default: null },
@@ -86,9 +95,7 @@ userSchema.virtual('whatsappAccounts', {
   count: true,
 });
 
-// Index
-userSchema.index({ email: 1 });
-userSchema.index({ phone: 1 });
+// Index — email & phone already get unique indexes from `unique: true` on the field.
 userSchema.index({ isActive: 1 });
 
 // Hash password before save
@@ -131,10 +138,16 @@ userSchema.methods.toSafeJSON = function () {
   delete obj.password;
   delete obj.emailOtp;
   delete obj.emailOtpExpiry;
+  delete obj.emailOtpAttempts;
   delete obj.phoneOtp;
   delete obj.phoneOtpExpiry;
+  delete obj.phoneOtpAttempts;
   delete obj.refreshTokens;
+  delete obj.mfaSecret;
+  delete obj.mfaBackupCodes;
   delete obj.__v;
+  // Expose only whether MFA is on, not the secret.
+  obj.mfaEnabled = !!obj.mfaEnabled;
   return obj;
 };
 

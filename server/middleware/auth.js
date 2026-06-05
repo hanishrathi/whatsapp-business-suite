@@ -35,6 +35,14 @@ async function protect(req, res, next) {
       });
     }
 
+    // F5: reject tokens issued before a password change / logout-all.
+    if ((decoded.tv || 0) !== (user.tokenVersion || 0)) {
+      return res.status(401).json({
+        success: false,
+        message: 'Session expired. Please log in again.',
+      });
+    }
+
     req.user = user;
     next();
   } catch (err) {
@@ -75,9 +83,12 @@ function adminOnly(req, res, next) {
   next();
 }
 
-// Generate JWT
-function signToken(userId) {
-  return jwt.sign({ id: userId }, process.env.JWT_SECRET, {
+// Generate JWT. Accepts a user object (preferred) or a raw id (legacy).
+function signToken(userOrId) {
+  const isObj = userOrId && typeof userOrId === 'object';
+  const id = isObj ? userOrId._id : userOrId;
+  const tv = isObj ? (userOrId.tokenVersion || 0) : 0;
+  return jwt.sign({ id, tv }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
   });
 }

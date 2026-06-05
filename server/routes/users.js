@@ -7,7 +7,10 @@ const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const User = require('../models/User');
 const WhatsAppAccount = require('../models/WhatsAppAccount');
-const { protect } = require('../middleware/auth');
+const { protect, signToken } = require('../middleware/auth');
+const { encrypt, decrypt, hashToken } = require('../utils/crypto');
+const totp = require('../utils/totp');
+const { logAction } = require('../utils/audit');
 
 // Multer config for avatar uploads
 const upload = multer({
@@ -147,12 +150,30 @@ router.put('/password', protect, async (req, res) => {
     }
 
     user.password = newPassword;
+    // F5: invalidate all existing sessions/tokens issued before this change.
+    user.tokenVersion = (user.tokenVersion || 0) + 1;
     await user.save();
 
-    res.json({ success: true, message: 'Password updated successfully.' });
+    await logAction(req, 'user.password_change', { targetId: user._id });
+
+    // Re-issue a fresh token so the current session stays logged in.
+    const token = signToken(user);
+    res.json({ success: true, message: 'Password updated successfully.', token });
   } catch (err) {
-    console.error('Change password error:', err);
+    console.error('Change password error:', err.message);
     res.status(500).json({ success: false, message: 'Failed to change password.' });
+  }
+});
+
+// POST /api/users/logout-all — invalidate every active session for this user.
+router.post('/logout-all', protect, async (req, res) => {
+  try {
+    await User.findByIdAndUpdate(req.user._id, { $inc: { tokenVersion: 1 } });
+    await logAction(req, 'user.logout_all', { targetId: req.user._id });
+    res.json({ success: true, message: 'Signed out of all devices. Please log in again.' });
+  } catch (err) {
+    console.error('Logout-all error:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to sign out everywhere.' });
   }
 });
 
@@ -172,16 +193,28 @@ router.delete('/account', protect, async (req, res) => {
       return res.status(401).json({ success: false, message: 'Incorrect password.' });
     }
 
-    // Soft-delete: deactivate user and all accounts
+    // F7: real erasure — anonymize PII and FREE the email/phone so the person
+    // can sign up again later. The row is kept only as a tombstone for audit.
+    const tombstone = String(user._id);
     await User.findByIdAndUpdate(req.user._id, {
       isActive: false,
       deleteRequestedAt: new Date(),
+      name: 'Deleted user',
+      email: `deleted+${tombstone}@deleted.invalid`,
+      phone: `deleted-${tombstone}`,
+      company: '',
+      avatar: null,
+      mfaEnabled: false,
+      mfaSecret: undefined,
+      mfaBackupCodes: [],
+      emailOtp: undefined,
+      phoneOtp: undefined,
+      // Invalidate any tokens that were issued for this account.
+      $inc: { tokenVersion: 1 },
     });
 
-    await WhatsAppAccount.updateMany(
-      { userId: req.user._id },
-      { isActive: false }
-    );
+    // Hard-delete the user's WhatsApp accounts (incl. encrypted tokens).
+    await WhatsAppAccount.deleteMany({ userId: req.user._id });
 
     // Delete avatar file
     if (user.avatar) {
@@ -191,10 +224,89 @@ router.delete('/account', protect, async (req, res) => {
       }
     }
 
-    res.json({ success: true, message: 'Account deleted successfully.' });
+    await logAction(req, 'user.account_delete', { targetId: user._id });
+    res.json({ success: true, message: 'Account deleted. Your personal data has been removed.' });
   } catch (err) {
-    console.error('Delete account error:', err);
+    console.error('Delete account error:', err.message);
     res.status(500).json({ success: false, message: 'Failed to delete account.' });
+  }
+});
+
+/* ===================== F4: TOTP Multi-Factor Auth ===================== */
+
+// POST /api/users/mfa/setup — begin enrollment: returns a QR code + secret.
+router.post('/mfa/setup', protect, async (req, res) => {
+  try {
+    if (req.user.mfaEnabled) {
+      return res.status(400).json({ success: false, message: 'Two-factor auth is already enabled.' });
+    }
+    const secret = totp.generateSecret();
+    const enrollment = await totp.buildEnrollment(secret, req.user.email);
+
+    // Store the secret ENCRYPTED but mark MFA not-yet-enabled until confirmed.
+    await User.findByIdAndUpdate(req.user._id, { mfaSecret: encrypt(secret), mfaEnabled: false });
+
+    res.json({
+      success: true,
+      qr: enrollment.qrDataUrl,      // <img src="...">
+      secret,                         // for manual entry
+      message: 'Scan the QR in Google Authenticator, then confirm with a code.',
+    });
+  } catch (err) {
+    console.error('MFA setup error:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to start 2FA setup.' });
+  }
+});
+
+// POST /api/users/mfa/enable — confirm a code, turn MFA on, return backup codes once.
+router.post('/mfa/enable', protect, async (req, res) => {
+  try {
+    const { code } = req.body;
+    const user = await User.findById(req.user._id).select('+mfaSecret +mfaBackupCodes');
+    if (!user.mfaSecret) {
+      return res.status(400).json({ success: false, message: 'Start 2FA setup first.' });
+    }
+    const secret = decrypt(user.mfaSecret);
+    if (!totp.verifyToken(code, secret)) {
+      return res.status(400).json({ success: false, message: 'Incorrect code. Try again.' });
+    }
+
+    const backup = totp.generateBackupCodes(8);
+    user.mfaEnabled = true;
+    user.mfaBackupCodes = backup.hashed;       // store hashes only
+    user.tokenVersion = (user.tokenVersion || 0) + 1; // force re-login elsewhere
+    await user.save();
+
+    await logAction(req, 'user.mfa_enabled', { targetId: user._id });
+    res.json({
+      success: true,
+      message: 'Two-factor authentication enabled.',
+      backupCodes: backup.plain,   // shown ONCE — user must save these
+      token: signToken(user),
+    });
+  } catch (err) {
+    console.error('MFA enable error:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to enable 2FA.' });
+  }
+});
+
+// POST /api/users/mfa/disable — require password to turn MFA off.
+router.post('/mfa/disable', protect, async (req, res) => {
+  try {
+    const { password } = req.body;
+    const user = await User.findById(req.user._id).select('+password');
+    if (!password || !(await user.comparePassword(password))) {
+      return res.status(401).json({ success: false, message: 'Password is incorrect.' });
+    }
+    user.mfaEnabled = false;
+    user.mfaSecret = undefined;
+    user.mfaBackupCodes = [];
+    await user.save();
+    await logAction(req, 'user.mfa_disabled', { targetId: user._id });
+    res.json({ success: true, message: 'Two-factor authentication disabled.' });
+  } catch (err) {
+    console.error('MFA disable error:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to disable 2FA.' });
   }
 });
 

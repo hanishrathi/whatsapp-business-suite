@@ -3,3 +3,4 @@ node_modules/
 server/uploads/avatars/*
 !server/uploads/avatars/.gitkeep
 .DS_Store
+.github/workflows/
