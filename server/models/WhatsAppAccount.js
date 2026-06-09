@@ -98,8 +98,12 @@ const whatsAppAccountSchema = new mongoose.Schema({
   timestamps: true,
 });
 
-// Compound index: user + phone unique
-whatsAppAccountSchema.index({ userId: 1, phone: 1 }, { unique: true });
+// Compound index: user + phone unique — only among ACTIVE accounts, so a
+// disconnected number can be re-added later.
+whatsAppAccountSchema.index(
+  { userId: 1, phone: 1 },
+  { unique: true, partialFilterExpression: { isActive: true } }
+);
 whatsAppAccountSchema.index({ userId: 1, isActive: 1 });
 
 // Static: count active accounts for a user

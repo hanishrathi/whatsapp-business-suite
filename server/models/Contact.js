@@ -14,8 +14,11 @@ const contactSchema = new mongoose.Schema({
   isActive: { type: Boolean, default: true },
 }, { timestamps: true });
 
-// One contact phone per user (no duplicates within a tenant).
-contactSchema.index({ userId: 1, phone: 1 }, { unique: true });
+// One ACTIVE contact phone per user — a deleted phone can be re-added later.
+contactSchema.index(
+  { userId: 1, phone: 1 },
+  { unique: true, partialFilterExpression: { isActive: true } }
+);
 contactSchema.index({ userId: 1, isActive: 1 });
 
 contactSchema.statics.countForUser = function (userId) {

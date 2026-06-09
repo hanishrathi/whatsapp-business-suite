@@ -60,10 +60,14 @@ app.use(cors({
   credentials: true,
 }));
 
-// Force HTTPS in production
+// Force HTTPS in production — but never redirect the health check (the platform
+// probes it over HTTP internally) and only redirect safe GET/HEAD requests to
+// avoid breaking POSTs or creating loops behind the proxy.
 if (process.env.NODE_ENV === 'production') {
   app.use((req, res, next) => {
-    if (req.headers['x-forwarded-proto'] !== 'https') {
+    const proto = req.headers['x-forwarded-proto'];
+    const isSafe = req.method === 'GET' || req.method === 'HEAD';
+    if (proto && proto !== 'https' && isSafe && req.path !== '/api/health') {
       return res.redirect(301, `https://${req.hostname}${req.url}`);
     }
     next();
