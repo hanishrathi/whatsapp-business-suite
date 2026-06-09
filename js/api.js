@@ -228,6 +228,48 @@ const API = {
   async deleteWAAccount(id) {
     return this.request(`/accounts/${id}`, { method: 'DELETE' });
   },
+
+  // ========== CONTACTS ==========
+  async getContacts(q) {
+    return this.request('/contacts' + (q ? `?q=${encodeURIComponent(q)}` : ''));
+  },
+  async createContact(data) {
+    return this.request('/contacts', { method: 'POST', body: JSON.stringify(data) });
+  },
+  async updateContact(id, data) {
+    return this.request(`/contacts/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  },
+  async deleteContact(id) {
+    return this.request(`/contacts/${id}`, { method: 'DELETE' });
+  },
+
+  // ========== TEMPLATES ==========
+  async getTemplates() {
+    return this.request('/templates');
+  },
+  async createTemplate(data) {
+    return this.request('/templates', { method: 'POST', body: JSON.stringify(data) });
+  },
+  async updateTemplate(id, data) {
+    return this.request(`/templates/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  },
+  async deleteTemplate(id) {
+    return this.request(`/templates/${id}`, { method: 'DELETE' });
+  },
+
+  // ========== BROADCASTS ==========
+  async getBroadcasts() {
+    return this.request('/broadcasts');
+  },
+  async createBroadcast(data) {
+    return this.request('/broadcasts', { method: 'POST', body: JSON.stringify(data) });
+  },
+  async updateBroadcast(id, data) {
+    return this.request(`/broadcasts/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  },
+  async deleteBroadcast(id) {
+    return this.request(`/broadcasts/${id}`, { method: 'DELETE' });
+  },
 };
 
 // Auth guard — redirect to login if not authenticated

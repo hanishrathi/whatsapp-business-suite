@@ -858,6 +858,93 @@
         </div>
       </div>
     </div>
+    <!-- Contacts Page -->
+    <div class="page" id="page-contacts">
+      <div class="card">
+        <div class="card-header">
+          <h3>Contacts</h3>
+          <div style="display:flex;gap:10px;align-items:center;">
+            <input type="text" id="contactSearch" class="form-input" placeholder="Search contacts…" style="width:200px;height:36px;">
+            <button class="btn btn-sm" id="newContactBtn">+ New Contact</button>
+          </div>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="data-table">
+            <thead>
+              <tr><th>Name</th><th>Phone</th><th>Email</th><th>Tags</th><th>Status</th><th></th></tr>
+            </thead>
+            <tbody id="contactsTableBody">
+              <tr><td colspan="6" style="text-align:center;padding:30px;color:#86868b;">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Templates Page -->
+    <div class="page" id="page-templates">
+      <div class="card">
+        <div class="card-header">
+          <h3>Message Templates</h3>
+          <button class="btn btn-sm" id="newTemplateBtn">+ New Template</button>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="data-table">
+            <thead>
+              <tr><th>Name</th><th>Category</th><th>Language</th><th>Variables</th><th>Status</th><th></th></tr>
+            </thead>
+            <tbody id="templatesTableBody">
+              <tr><td colspan="6" style="text-align:center;padding:30px;color:#86868b;">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Broadcasts Page -->
+    <div class="page" id="page-broadcasts">
+      <div class="card">
+        <div class="card-header">
+          <h3>Broadcasts</h3>
+          <button class="btn btn-sm" id="newBroadcastBtn">+ New Broadcast</button>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="data-table">
+            <thead>
+              <tr><th>Name</th><th>Audience</th><th>Status</th><th>Sent</th><th>Created</th><th></th></tr>
+            </thead>
+            <tbody id="broadcastsTableBody">
+              <tr><td colspan="6" style="text-align:center;padding:30px;color:#86868b;">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Placeholder pages (features on the roadmap) -->
+    <div class="page" id="page-chatbots"><div class="card"><div class="coming-soon"><h3>Chatbots</h3><p>Automated reply flows are coming soon. Build keyword triggers and auto-responders here.</p></div></div></div>
+    <div class="page" id="page-flows"><div class="card"><div class="coming-soon"><h3>Flows</h3><p>Visual conversation flow builder is coming soon.</p></div></div></div>
+    <div class="page" id="page-reports"><div class="card"><div class="coming-soon"><h3>Reports</h3><p>Exportable reports are coming soon. For now, see live numbers on Analytics.</p></div></div></div>
+    <div class="page" id="page-api"><div class="card"><div class="coming-soon"><h3>API &amp; Webhooks</h3><p>Generate API keys and configure webhooks here. Coming soon.</p></div></div></div>
+    <div class="page" id="page-team"><div class="card"><div class="coming-soon"><h3>Settings &amp; Team</h3><p>Invite teammates and manage workspace settings. Coming soon. Your personal profile is available from the user menu.</p></div></div></div>
+
+    <!-- Generic create/edit modal for contacts, templates, broadcasts -->
+    <div class="modal-overlay" id="entityModal">
+      <div class="modal">
+        <div class="modal-header">
+          <h3 id="entityModalTitle">New</h3>
+          <button class="modal-close" id="entityModalClose">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div class="modal-body" id="entityModalBody"><!-- fields injected by JS --></div>
+        <div class="modal-footer">
+          <button class="btn btn-outline" id="entityModalCancel">Cancel</button>
+          <button class="btn" id="entityModalSave">Save</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Accounts Management Page -->
     <div class="page" id="page-accounts">
       <!-- Accounts Overview Stats -->
@@ -1064,5 +1151,7 @@
   </script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="js/dashboard.js"></script>
+  <script src="js/entities.js"></script>
+  <script src="js/quick-actions.js"></script>
 </body>
 </html>

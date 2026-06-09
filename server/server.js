@@ -107,6 +107,9 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads'), { maxAge: '7
 app.use('/api/auth', authLimiter, require('./routes/auth'));
 app.use('/api/users', apiLimiter, require('./routes/users'));
 app.use('/api/accounts', apiLimiter, require('./routes/accounts'));
+app.use('/api/contacts', apiLimiter, require('./routes/contacts'));
+app.use('/api/templates', apiLimiter, require('./routes/templates'));
+app.use('/api/broadcasts', apiLimiter, require('./routes/broadcasts'));
 
 // Health check
 app.get('/api/health', (req, res) => {

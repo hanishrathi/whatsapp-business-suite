@@ -1516,3 +1516,17 @@ input, select, textarea { font-family: inherit; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.2); }
+
+/* ===== Coming-soon placeholder + entity tables ===== */
+.coming-soon { text-align: center; padding: 60px 24px; }
+.coming-soon h3 { font-size: 22px; margin-bottom: 10px; color: var(--text, #1d1d1f); }
+.coming-soon p { color: #86868b; max-width: 420px; margin: 0 auto; line-height: 1.6; }
+.modal-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 24px; border-top: 1px solid #e8e8ed; }
+.row-action-btn { background: none; border: none; cursor: pointer; color: #86868b; padding: 6px; border-radius: 6px; font-size: 13px; }
+.row-action-btn:hover { background: rgba(0,0,0,0.05); color: #1d1d1f; }
+.row-action-btn.danger:hover { color: #FF3B30; background: rgba(255,59,48,0.08); }
+.status-pill { display:inline-block; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:600; }
+.status-pill.active, .status-pill.approved, .status-pill.sent { background: rgba(37,211,102,0.12); color:#1a8a47; }
+.status-pill.draft, .status-pill.pending, .status-pill.scheduled { background: rgba(255,149,0,0.12); color:#c2740a; }
+.status-pill.blocked, .status-pill.rejected, .status-pill.failed, .status-pill.unsubscribed { background: rgba(255,59,48,0.1); color:#d13b30; }
+.entity-empty { text-align:center; padding:30px; color:#86868b; }
