@@ -1,14 +1,14 @@
-const AuditLog = require('../models/AuditLog');
+const auditLogs = require('../data/auditLogs');
 
 /*
  * Record a sensitive action. Never throws into the request flow —
  * an audit failure must not break the user's action, only be logged.
  *
- * Usage:  await logAction(req, 'whatsapp_account.delete', { targetId, meta });
+ * Usage:  logAction(req, 'whatsapp_account.delete', { targetId, meta });
  */
-async function logAction(req, action, { targetId, meta } = {}) {
+function logAction(req, action, { targetId, meta } = {}) {
   try {
-    await AuditLog.create({
+    auditLogs.create({
       userId: req.user ? req.user._id : undefined,
       actorEmail: req.user ? req.user.email : undefined,
       action,
@@ -18,7 +18,6 @@ async function logAction(req, action, { targetId, meta } = {}) {
       meta,
     });
   } catch (err) {
-    // Audit must be best-effort; log a short note, never the full payload.
     console.error('Audit log write failed for action:', action);
   }
 }

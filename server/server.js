@@ -4,14 +4,14 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
-const connectDB = require('./config/db');
+const database = require('./config/database');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Fail fast in production if critical secrets are missing — never boot insecure.
 if (process.env.NODE_ENV === 'production') {
-  const required = ['JWT_SECRET', 'ENCRYPTION_KEY', 'MONGO_URI'];
+  const required = ['JWT_SECRET', 'ENCRYPTION_KEY'];
   const missing = required.filter(k => !process.env[k]);
   if (missing.length) {
     console.error(`FATAL: missing required env vars in production: ${missing.join(', ')}`);
@@ -23,12 +23,12 @@ if (process.env.NODE_ENV === 'production') {
   }
 }
 
-// Trust Railway / Render proxy for HTTPS & rate-limiter
+// Trust the cPanel/Passenger reverse proxy for HTTPS & rate-limiter
 app.set('trust proxy', 1);
 
-// Connect to MongoDB (tests manage their own in-memory connection)
+// Open the SQLite database + create schema (tests init their own in-memory DB).
 if (process.env.NODE_ENV !== 'test') {
-  connectDB();
+  database.init();
 }
 
 // Security middleware — F6: enable a working Content-Security-Policy.

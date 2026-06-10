@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const User = require('../models/User');
+const users = require('../data/users');
 
 // Protect routes — require valid JWT
 async function protect(req, res, next) {
@@ -20,7 +20,7 @@ async function protect(req, res, next) {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    const user = await User.findById(decoded.id).select('-password');
+    const user = users.findById(decoded.id);
     if (!user) {
       return res.status(401).json({
         success: false,
@@ -43,7 +43,9 @@ async function protect(req, res, next) {
       });
     }
 
-    req.user = user;
+    // Strip secrets from the request-scoped user (routes re-fetch when they
+    // genuinely need the password/MFA secret).
+    req.user = users.toSafeJSON(user);
     next();
   } catch (err) {
     return res.status(401).json({
