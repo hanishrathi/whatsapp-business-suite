@@ -35,6 +35,10 @@ router.put('/:id', protect, requireVerified, (req, res) => {
     const allowed = ['name', 'category', 'language', 'body', 'status'];
     const updates = {};
     for (const k of allowed) if (req.body[k] !== undefined) updates[k] = req.body[k];
+    const TEMPLATE_STATUSES = ['draft', 'pending', 'approved', 'rejected'];
+    if (updates.status !== undefined && !TEMPLATE_STATUSES.includes(updates.status)) {
+      return res.status(400).json({ success: false, message: `Status must be one of: ${TEMPLATE_STATUSES.join(', ')}.` });
+    }
     const template = templates.update(req.params.id, req.user._id, updates);
     if (!template) return res.status(404).json({ success: false, message: 'Template not found.' });
     res.json({ success: true, template, message: 'Template updated.' });

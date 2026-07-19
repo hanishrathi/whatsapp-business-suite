@@ -46,11 +46,17 @@ router.put('/profile', protect, (req, res) => {
     const { name, company, timezone } = req.body;
     const updates = {};
     if (name !== undefined) {
-      if (name.length < 2 || name.length > 60) return res.status(400).json({ success: false, message: 'Name must be 2-60 characters.' });
+      if (typeof name !== 'string' || name.trim().length < 2 || name.trim().length > 60) return res.status(400).json({ success: false, message: 'Name must be 2-60 characters.' });
       updates.name = name.trim();
     }
-    if (company !== undefined) updates.company = company.trim();
-    if (timezone !== undefined) updates.timezone = timezone;
+    if (company !== undefined) {
+      if (typeof company !== 'string') return res.status(400).json({ success: false, message: 'Company must be text.' });
+      updates.company = company.trim();
+    }
+    if (timezone !== undefined) {
+      if (typeof timezone !== 'string') return res.status(400).json({ success: false, message: 'Timezone must be text.' });
+      updates.timezone = timezone;
+    }
     const user = users.update(req.user._id, updates);
     res.json({ success: true, user: users.toSafeJSON(user), message: 'Profile updated.' });
   } catch (err) {

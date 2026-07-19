@@ -56,7 +56,7 @@ app.use(helmet({
 
 app.use(cors({
   origin: process.env.NODE_ENV === 'production'
-    ? [process.env.BASE_URL, 'https://wa.acquihiretech.com', 'https://acquihiretech.com']
+    ? [process.env.BASE_URL, 'https://wa.acquihiretech.com', 'https://acquihiretech.com'].filter(Boolean)
     : '*',
   credentials: true,
 }));
@@ -97,8 +97,8 @@ const apiLimiter = rateLimit({
 });
 
 // Body parsing
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '200kb' }));
+app.use(express.urlencoded({ extended: true, limit: '200kb' }));
 
 // Static files — cache assets in production
 const staticOptions = process.env.NODE_ENV === 'production'

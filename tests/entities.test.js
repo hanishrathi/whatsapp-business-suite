@@ -59,6 +59,34 @@ describe('Templates CRUD', () => {
   });
 });
 
+describe('Hardening: cross-tenant refs & status validation', () => {
+  test("broadcast cannot reference another user's template", async () => {
+    const a = await verifiedToken('ht1@e.com', '+919000002001');
+    const b = await verifiedToken('ht2@e.com', '+919000002002');
+    const tpl = await request(app).post('/api/templates').set('Authorization', `Bearer ${a}`)
+      .send({ name: 'mine', body: 'hello' });
+    const res = await request(app).post('/api/broadcasts').set('Authorization', `Bearer ${b}`)
+      .send({ name: 'steal', templateId: tpl.body.template._id });
+    expect(res.status).toBe(400);
+  });
+
+  test('broadcast status cannot be forced to "sent"', async () => {
+    const token = await verifiedToken('ht3@e.com', '+919000002003');
+    const create = await request(app).post('/api/broadcasts').set('Authorization', `Bearer ${token}`)
+      .send({ name: 'B', message: 'hi' });
+    const res = await request(app).put(`/api/broadcasts/${create.body.broadcast._id}`)
+      .set('Authorization', `Bearer ${token}`).send({ status: 'sent' });
+    expect(res.status).toBe(400);
+  });
+
+  test('contact with invalid status is rejected', async () => {
+    const token = await verifiedToken('ht4@e.com', '+919000002004');
+    const res = await request(app).post('/api/contacts').set('Authorization', `Bearer ${token}`)
+      .send({ name: 'X', phone: '+919855555555', status: 'hacked' });
+    expect(res.status).toBe(400);
+  });
+});
+
 describe('Broadcasts CRUD', () => {
   test('audience count reflects active contacts', async () => {
     const token = await verifiedToken('b2@e.com', '+919000000006');

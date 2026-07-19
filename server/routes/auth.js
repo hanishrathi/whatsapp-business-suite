@@ -81,7 +81,12 @@ router.post('/login', async (req, res) => {
     }
 
     const user = users.findByEmail(email);
-    if (!user) return res.status(401).json({ success: false, message: 'Invalid email or password.' });
+    if (!user) {
+      // Burn the same bcrypt time as a real check so response timing
+      // doesn't reveal whether the account exists.
+      await users.comparePassword(password, '$2a$12$C6UzMDM.H6dfI/f/IKcEeO7ZGxUKQI0MQrWZWkzhFsyBqBOb0Hkxi');
+      return res.status(401).json({ success: false, message: 'Invalid email or password.' });
+    }
     if (!user.isActive) return res.status(401).json({ success: false, message: 'This account has been deactivated.' });
     if (users.isLocked(user)) return res.status(423).json({ success: false, message: 'Account is temporarily locked. Try again in 15 minutes.' });
 
@@ -172,6 +177,14 @@ router.post('/resend-otp', protect, async (req, res) => {
   try {
     const { type } = req.body;
     const user = users.findById(req.user._id);
+
+    // Cooldown: the previous code's issue time is (expiry - OTP_EXPIRY).
+    // Block a new send within 60 seconds of it.
+    const prevExpiry = type === 'email' ? user.emailOtpExpiry : user.phoneOtpExpiry;
+    if (prevExpiry && prevExpiry.getTime() - OTP_EXPIRY + 60 * 1000 > Date.now()) {
+      return res.status(429).json({ success: false, message: 'Please wait a minute before requesting another code.' });
+    }
+
     const otp = generateOTP();
     const expiry = new Date(Date.now() + OTP_EXPIRY);
 
