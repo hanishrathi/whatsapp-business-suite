@@ -126,6 +126,8 @@
   }
 
   /* ---------- Broadcasts ---------- */
+  let broadcastPollTimer = null;
+
   async function loadBroadcasts() {
     const tbody = document.getElementById('broadcastsTableBody');
     if (!tbody) return;
@@ -133,33 +135,129 @@
     const res = await API.getBroadcasts();
     if (!res.success || !res.broadcasts.length) {
       tbody.innerHTML = `<tr><td colspan="6" class="entity-empty">No broadcasts yet. Click “+ New Broadcast” to create one.</td></tr>`;
+      stopBroadcastPolling();
       return;
     }
-    tbody.innerHTML = res.broadcasts.map(b => `
+    tbody.innerHTML = res.broadcasts.map(b => {
+      const sendable = ['draft', 'scheduled', 'failed'].includes(b.status);
+      const progress = b.status === 'sending'
+        ? `${b.sentCount || 0}/${b.audienceCount || '?'}…`
+        : `${b.sentCount || 0}${b.failedCount ? ` <span style="color:#FF6B6B">(${b.failedCount} failed)</span>` : ''}`;
+      return `
       <tr>
-        <td><strong>${esc(b.name)}</strong></td>
+        <td><strong>${esc(b.name)}</strong>${b.scheduledAt && b.status === 'scheduled' ? `<br><small style="color:#86868b">⏱ ${new Date(b.scheduledAt).toLocaleString()}</small>` : ''}</td>
         <td>${b.audienceCount} contacts</td>
         <td>${pill(b.status)}</td>
-        <td>${b.sentCount || 0}</td>
+        <td>${progress}</td>
         <td>${new Date(b.createdAt).toLocaleDateString()}</td>
         <td style="text-align:right;white-space:nowrap;">
+          ${sendable ? `<button class="row-action-btn" data-send-broadcast="${b._id}" data-broadcast-name="${esc(b.name)}" data-audience="${b.audienceCount}">Send now</button>` : ''}
+          ${b.status === 'sending' ? `<button class="row-action-btn" disabled style="opacity:.5">Sending…</button>` : ''}
           <button class="row-action-btn danger" data-del-broadcast="${b._id}">Delete</button>
         </td>
-      </tr>`).join('');
+      </tr>`;
+    }).join('');
+
+    // While anything is sending, refresh every 2.5s so the customer sees progress.
+    if (res.broadcasts.some(b => b.status === 'sending')) startBroadcastPolling();
+    else stopBroadcastPolling();
+  }
+
+  function startBroadcastPolling() {
+    if (broadcastPollTimer) return;
+    broadcastPollTimer = setInterval(() => {
+      const page = document.getElementById('page-broadcasts');
+      if (page && page.classList.contains('active')) loadBroadcasts();
+      else stopBroadcastPolling();
+    }, 2500);
+  }
+  function stopBroadcastPolling() {
+    if (broadcastPollTimer) { clearInterval(broadcastPollTimer); broadcastPollTimer = null; }
   }
 
   function broadcastModal() {
     openEntityModal('New Broadcast',
       field('Name', 'ebName', { placeholder: 'Diwali Sale Blast' }) +
-      field('Message', 'ebMsg', { textarea: true, placeholder: 'Your message to send…' }) +
-      field('Audience tag', 'ebTag', { value: 'all', placeholder: 'all, or a tag like "vip"' }),
+      field('Message — use {{name}} to personalize', 'ebMsg', { textarea: true, placeholder: 'Hi {{name}}, our Diwali sale is live! 🎉' }) +
+      field('Audience tag', 'ebTag', { value: 'all', placeholder: 'all, or a tag like "vip"' }) +
+      field('Schedule (optional — leave empty to send manually)', 'ebWhen', { type: 'datetime-local' }),
       async () => {
         const data = { name: val('ebName'), message: val('ebMsg'), audienceTag: val('ebTag') || 'all' };
         if (!data.name || !data.message) return alert('Name and message are required.');
+        const when = val('ebWhen');
+        if (when) {
+          const ts = new Date(when);
+          if (isNaN(ts) || ts.getTime() < Date.now()) return alert('The scheduled time must be in the future.');
+          data.scheduledAt = ts.toISOString();
+        }
         const res = await API.createBroadcast(data);
         if (!res.success) return alert(res.message || 'Failed to create broadcast.');
         closeEntityModal(); loadBroadcasts();
+        if (data.scheduledAt) alert('Broadcast scheduled. It will send automatically at the chosen time.');
       });
+  }
+
+  /* ---------- CSV import / export ---------- */
+  function parseCsv(text) {
+    // Minimal CSV parser (handles quoted cells with commas).
+    const rows = [];
+    let row = [], cell = '', inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (inQuotes) {
+        if (ch === '"' && text[i + 1] === '"') { cell += '"'; i++; }
+        else if (ch === '"') inQuotes = false;
+        else cell += ch;
+      } else if (ch === '"') inQuotes = true;
+      else if (ch === ',') { row.push(cell); cell = ''; }
+      else if (ch === '\n' || ch === '\r') {
+        if (ch === '\r' && text[i + 1] === '\n') i++;
+        row.push(cell); cell = '';
+        if (row.some(c => c.trim() !== '')) rows.push(row);
+        row = [];
+      } else cell += ch;
+    }
+    row.push(cell);
+    if (row.some(c => c.trim() !== '')) rows.push(row);
+    return rows;
+  }
+
+  async function importCsvFile(file) {
+    const text = await file.text();
+    const rows = parseCsv(text);
+    if (!rows.length) return alert('That file looks empty.');
+
+    // Find the columns: use a header row if there is one, else assume name,phone.
+    const header = rows[0].map(h => h.trim().toLowerCase());
+    const hasHeader = header.includes('name') || header.includes('phone');
+    const idx = {
+      name: hasHeader ? header.indexOf('name') : 0,
+      phone: hasHeader ? header.indexOf('phone') : 1,
+      email: hasHeader ? header.indexOf('email') : -1,
+      tags: hasHeader ? header.indexOf('tags') : -1,
+      notes: hasHeader ? header.indexOf('notes') : -1,
+    };
+    if (idx.name < 0 || idx.phone < 0) return alert('The CSV needs "name" and "phone" columns.');
+
+    const dataRows = (hasHeader ? rows.slice(1) : rows).map(r => ({
+      name: (r[idx.name] || '').trim(),
+      phone: (r[idx.phone] || '').trim(),
+      email: idx.email >= 0 ? (r[idx.email] || '').trim() : '',
+      tags: idx.tags >= 0 ? (r[idx.tags] || '').replace(/\|/g, ',') : '',
+      notes: idx.notes >= 0 ? (r[idx.notes] || '').trim() : '',
+    })).filter(r => r.name && r.phone);
+
+    if (!dataRows.length) return alert('No rows with both a name and a phone found.');
+    if (!confirm(`Import ${dataRows.length} contact${dataRows.length === 1 ? '' : 's'} from "${file.name}"?`)) return;
+
+    let added = 0, skipped = 0;
+    for (let i = 0; i < dataRows.length; i += 400) {
+      const res = await API.importContacts(dataRows.slice(i, i + 400));
+      if (!res.success) return alert(res.message || 'Import failed part-way. Some contacts may have been added.');
+      added += res.added; skipped += res.skipped;
+    }
+    alert(`Done! Imported ${added} contact${added === 1 ? '' : 's'}${skipped ? `, skipped ${skipped} (duplicates or bad rows)` : ''}.`);
+    loadContacts();
   }
 
   /* ---------- wire everything on load ---------- */
@@ -178,6 +276,22 @@
     on('newContactBtn', () => contactModal());
     on('newTemplateBtn', () => templateModal());
     on('newBroadcastBtn', () => broadcastModal());
+
+    // CSV import / export
+    const importBtn = document.getElementById('importContactsBtn');
+    const csvInput = document.getElementById('csvFileInput');
+    if (importBtn && csvInput) {
+      importBtn.addEventListener('click', () => csvInput.click());
+      csvInput.addEventListener('change', () => {
+        if (csvInput.files && csvInput.files[0]) importCsvFile(csvInput.files[0]);
+        csvInput.value = '';
+      });
+    }
+    const exportBtn = document.getElementById('exportContactsBtn');
+    if (exportBtn) exportBtn.addEventListener('click', async () => {
+      const res = await API.exportContactsCsv();
+      if (!res.success) alert(res.message || 'Export failed.');
+    });
 
     // Contact search (debounced)
     const search = document.getElementById('contactSearch');
@@ -204,6 +318,18 @@
       if (t.dataset.editTemplate) return templateModal(JSON.parse(t.dataset.editTemplate));
       if (t.dataset.delTemplate) { if (confirm('Delete this template?')) { await API.deleteTemplate(t.dataset.delTemplate); loadTemplates(); } }
       if (t.dataset.delBroadcast) { if (confirm('Delete this broadcast?')) { await API.deleteBroadcast(t.dataset.delBroadcast); loadBroadcasts(); } }
+      if (t.dataset.sendBroadcast) {
+        const name = t.dataset.broadcastName || 'this broadcast';
+        const audience = t.dataset.audience || '?';
+        if (!confirm(`Send "${name}" on WhatsApp to ${audience} contact${audience === '1' ? '' : 's'} now?\n\nThis sends real messages and cannot be undone.`)) return;
+        t.disabled = true; t.textContent = 'Starting…';
+        const res = await API.sendBroadcast(t.dataset.sendBroadcast);
+        if (!res.success) {
+          alert(res.message || 'Could not start sending.');
+          t.disabled = false; t.textContent = 'Send now';
+        }
+        loadBroadcasts();
+      }
     });
   });
 })();

@@ -3,6 +3,7 @@ const router = express.Router();
 const waAccounts = require('../data/whatsappAccounts');
 const { protect, requireVerified } = require('../middleware/auth');
 const { encrypt } = require('../utils/crypto');
+const wa = require('../utils/whatsapp');
 const { logAction } = require('../utils/audit');
 
 const MAX_ACCOUNTS = parseInt(process.env.MAX_WHATSAPP_ACCOUNTS || '25', 10);
@@ -112,6 +113,37 @@ router.put('/:id/color', protect, requireVerified, (req, res) => {
   } catch (err) {
     console.error('Update color error:', err.message);
     res.status(500).json({ success: false, message: 'Failed to update color.' });
+  }
+});
+
+// POST /api/accounts/:id/test — live credential check against Meta
+router.post('/:id/test', protect, requireVerified, async (req, res) => {
+  try {
+    const account = waAccounts.findForUserWithToken(req.params.id, req.user._id);
+    if (!account) return res.status(404).json({ success: false, message: 'Account not found.' });
+
+    const r = await wa.testConnection(account);
+    const qualityMap = { green: 'high', yellow: 'medium', red: 'low' };
+    waAccounts.update(req.params.id, req.user._id, {
+      status: r.ok ? 'connected' : 'error',
+      isVerified: r.ok,
+      verifiedAt: r.ok ? new Date() : null,
+      ...(r.ok && r.qualityRating ? {
+        quality: qualityMap[r.qualityRating] || 'high',
+        qualityLabel: (qualityMap[r.qualityRating] || 'high').replace(/^./, c => c.toUpperCase()),
+      } : {}),
+    });
+    logAction(req, 'whatsapp_account.test', { targetId: req.params.id, meta: { ok: r.ok } });
+
+    if (!r.ok) return res.status(400).json({ success: false, message: `Connection failed: ${r.error}` });
+    res.json({
+      success: true,
+      message: `Connected! Verified as "${r.verifiedName || account.name}" (${r.displayPhoneNumber || account.phone}).`,
+      verifiedName: r.verifiedName, displayPhoneNumber: r.displayPhoneNumber, qualityRating: r.qualityRating,
+    });
+  } catch (err) {
+    console.error('Test account error:', err.message);
+    res.status(500).json({ success: false, message: 'Connection test failed.' });
   }
 });
 

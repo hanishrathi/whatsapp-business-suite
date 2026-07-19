@@ -107,6 +107,25 @@ database. (Ask me and I'll add an admin tool when you need it.)
 
 ---
 
+## Step 7 — Get delivery receipts (after your first broadcast works)
+
+Broadcasts send without this, but "delivered/read" stats need Meta to call you back:
+
+1. Add env var `WA_WEBHOOK_VERIFY_TOKEN` = any random string (e.g. from
+   `node -e "console.log(require('crypto').randomBytes(16).toString('hex'))"`) and Restart.
+2. In **developers.facebook.com** → your app → **WhatsApp → Configuration**, set:
+   - **Callback URL:** `https://YOUR-DOMAIN/api/webhooks/whatsapp`
+   - **Verify token:** the same random string
+   Click **Verify and save**, then subscribe to the **messages** webhook field.
+
+## Step 8 — Keep scheduled broadcasts on time
+
+cPanel puts Node apps to sleep when idle; a sleeping app can't fire a scheduled
+broadcast until someone visits. Fix with a keep-alive ping:
+
+1. cPanel → **Cron Jobs** → add: every 5 minutes,
+   `curl -s https://YOUR-DOMAIN/api/health > /dev/null`
+
 ## Backups & updates
 - **Backups:** your entire database is the single file `server/data/app.db`. Download it
   from File Manager any time, or include the app folder in cPanel's backup.

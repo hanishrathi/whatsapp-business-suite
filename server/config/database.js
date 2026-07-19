@@ -155,6 +155,22 @@ function createSchema() {
     );
     CREATE INDEX IF NOT EXISTS ix_broadcasts_user_active ON broadcasts(userId, isActive);
 
+    CREATE TABLE IF NOT EXISTS broadcast_messages (
+      id TEXT PRIMARY KEY,
+      broadcastId TEXT NOT NULL,
+      userId TEXT NOT NULL,
+      contactId TEXT,
+      phone TEXT NOT NULL,
+      wamid TEXT,
+      status TEXT DEFAULT 'pending',
+      error TEXT,
+      createdAt INTEGER NOT NULL,
+      updatedAt INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS ix_bm_broadcast ON broadcast_messages(broadcastId);
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_bm_wamid ON broadcast_messages(wamid) WHERE wamid IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS ix_bm_user_time ON broadcast_messages(userId, createdAt);
+
     CREATE TABLE IF NOT EXISTS audit_logs (
       id TEXT PRIMARY KEY,
       userId TEXT,
@@ -169,6 +185,9 @@ function createSchema() {
     CREATE INDEX IF NOT EXISTS ix_audit_user ON audit_logs(userId);
     CREATE INDEX IF NOT EXISTS ix_audit_action ON audit_logs(action);
   `);
+
+  // Additive migrations for databases created before these columns existed.
+  try { db.exec(`ALTER TABLE broadcasts ADD COLUMN failedCount INTEGER DEFAULT 0`); } catch { /* already there */ }
 }
 
 module.exports = { init, getDb, newId };

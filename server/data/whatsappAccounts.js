@@ -27,6 +27,16 @@ function listForUser(userId) {
 function findForUser(id, userId) {
   return mapRow(getDb().prepare('SELECT * FROM whatsapp_accounts WHERE id = ? AND userId = ? AND isActive = 1').get(id, userId));
 }
+// Internal use only (send/test): includes the encrypted access token.
+function findForUserWithToken(id, userId) {
+  return mapRow(getDb().prepare('SELECT * FROM whatsapp_accounts WHERE id = ? AND userId = ? AND isActive = 1').get(id, userId), true);
+}
+// First account that has API credentials — the default sender.
+function firstSendableForUser(userId) {
+  return mapRow(getDb().prepare(
+    `SELECT * FROM whatsapp_accounts WHERE userId = ? AND isActive = 1 AND phoneNumberId != '' AND accessToken != '' ORDER BY createdAt LIMIT 1`)
+    .get(userId), true);
+}
 function findActiveByPhone(userId, phone) {
   return mapRow(getDb().prepare('SELECT * FROM whatsapp_accounts WHERE userId = ? AND phone = ? AND isActive = 1').get(userId, phone));
 }
@@ -79,4 +89,4 @@ function deleteAllForUser(userId) {
   getDb().prepare('DELETE FROM whatsapp_accounts WHERE userId = ?').run(userId);
 }
 
-module.exports = { listForUser, findForUser, findActiveByPhone, countActiveForUser, create, update, softDelete, deleteAllForUser, mapRow };
+module.exports = { listForUser, findForUser, findForUserWithToken, firstSendableForUser, findActiveByPhone, countActiveForUser, create, update, softDelete, deleteAllForUser, mapRow };

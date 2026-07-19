@@ -1,4 +1,5 @@
-require('dotenv').config();
+// Load .env from the project root no matter where the process was started from.
+require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -97,7 +98,8 @@ const apiLimiter = rateLimit({
 });
 
 // Body parsing
-app.use(express.json({ limit: '200kb' }));
+// Keep the raw body so the Meta webhook signature can be verified.
+app.use(express.json({ limit: '200kb', verify: (req, res, buf) => { req.rawBody = buf; } }));
 app.use(express.urlencoded({ extended: true, limit: '200kb' }));
 
 // Static files — cache assets in production
@@ -115,6 +117,13 @@ app.use('/api/accounts', apiLimiter, require('./routes/accounts'));
 app.use('/api/contacts', apiLimiter, require('./routes/contacts'));
 app.use('/api/templates', apiLimiter, require('./routes/templates'));
 app.use('/api/broadcasts', apiLimiter, require('./routes/broadcasts'));
+app.use('/api/dashboard', apiLimiter, require('./routes/dashboard'));
+
+// Meta webhook — no auth (Meta calls it), generous limit (delivery receipts burst).
+const webhookLimiter = rateLimit({
+  windowMs: 60 * 1000, max: 600, standardHeaders: true, legacyHeaders: false, skip: skipInTest,
+});
+app.use('/api/webhooks', webhookLimiter, require('./routes/webhooks'));
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -164,6 +173,9 @@ app.use((err, req, res, next) => {
 
 // Don't bind a port during tests (supertest uses the app object directly).
 if (process.env.NODE_ENV !== 'test') {
+  // Fire due scheduled broadcasts while the app is running.
+  require('./services/sender').startScheduler();
+
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`
   ╔══════════════════════════════════════════════════════╗

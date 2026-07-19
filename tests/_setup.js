@@ -12,7 +12,7 @@ const users = require('../server/data/users');
 
 function resetDb() {
   const db = database.getDb();
-  for (const t of ['users', 'whatsapp_accounts', 'contacts', 'templates', 'broadcasts', 'audit_logs']) {
+  for (const t of ['users', 'whatsapp_accounts', 'contacts', 'templates', 'broadcasts', 'broadcast_messages', 'audit_logs']) {
     db.exec(`DELETE FROM ${t}`);
   }
 }

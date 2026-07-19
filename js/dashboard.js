@@ -1,141 +1,58 @@
 /* =========================================================
    WhatsApp Business Suite Dashboard — JS
+   All numbers come from the API. No demo data.
    ========================================================= */
 
+function safeInit(fn) { try { fn(); } catch (e) { console.error('Init error:', e); } }
+
 document.addEventListener('DOMContentLoaded', () => {
-  initNavigation();
-  initCounters();
-  initCharts();
-  initMobileMenu();
-  initAccountSystem();
-  initModal();
+  safeInit(initNavigation);
+  safeInit(initMobileMenu);
+  safeInit(initAccountSystem);
+  safeInit(initModal);
+  safeInit(loadDashboardStats);
 });
 
-/* ========== ACCOUNT DATA STORE ========== */
+/* ========== ACCOUNT DATA STORE (server-backed) ========== */
 const MAX_WHATSAPP_ACCOUNTS = 25;
 
 const accountStore = {
-  accounts: [
-    {
-      id: 'acc_1',
-      name: 'AcquiHire Sales',
-      phone: '+91 98765 00001',
-      country: '+91',
-      category: 'Sales & Marketing',
-      color: '#25D366',
-      colorClass: 'green',
-      status: 'online',
-      quality: 'high',
-      qualityLabel: 'High',
-      messages: 8420,
-      contacts: 12540,
-      delivery: '96.2%',
-      waba_id: 'WABA_102938475610293',
-      created: 'Jan 12, 2026',
-    },
-    {
-      id: 'acc_2',
-      name: 'AcquiHire Support',
-      phone: '+91 98765 00002',
-      country: '+91',
-      category: 'Customer Support',
-      color: '#34B7F1',
-      colorClass: 'blue',
-      status: 'online',
-      quality: 'high',
-      qualityLabel: 'High',
-      messages: 11240,
-      contacts: 15380,
-      delivery: '98.1%',
-      waba_id: 'WABA_293847561029384',
-      created: 'Feb 3, 2026',
-    },
-    {
-      id: 'acc_3',
-      name: 'AcquiHire Alerts',
-      phone: '+1 555 123 4567',
-      country: '+1',
-      category: 'Notifications & Alerts',
-      color: '#9B59B6',
-      colorClass: 'purple',
-      status: 'online',
-      quality: 'medium',
-      qualityLabel: 'Medium',
-      messages: 5020,
-      contacts: 6280,
-      delivery: '94.7%',
-      waba_id: 'WABA_384756102938475',
-      created: 'Mar 18, 2026',
-    }
-  ],
-  activeId: 'acc_1',
+  accounts: [],
+  activeId: null,
 
   getActive() {
-    return this.accounts.find(a => a.id === this.activeId);
+    return this.accounts.find(a => a.id === this.activeId) || null;
   },
 
   setActive(id) {
     this.activeId = id;
   },
 
-  add(account) {
-    if (this.accounts.length >= MAX_WHATSAPP_ACCOUNTS) {
-      alert(`Maximum of ${MAX_WHATSAPP_ACCOUNTS} WhatsApp accounts allowed. Please remove an existing account first.`);
-      return false;
-    }
-    account.id = 'acc_' + (this.accounts.length + 1) + '_' + Date.now();
-    account.status = 'connecting';
-    account.quality = 'high';
-    account.qualityLabel = 'High';
-    account.messages = 0;
-    account.contacts = 0;
-    account.delivery = '—';
-    account.waba_id = 'WABA_' + Math.random().toString().slice(2, 17);
-    account.created = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    this.accounts.push(account);
-    setTimeout(() => {
-      account.status = 'online';
-      renderAccountSwitcher();
-      renderAccountsPage();
-    }, 3000);
-    return true;
-  },
-
-  remove(id) {
-    if (this.accounts.length <= 1) return;
-    this.accounts = this.accounts.filter(a => a.id !== id);
-    if (this.activeId === id) {
-      this.activeId = this.accounts[0].id;
-    }
-  },
-
-  // Try loading from API (falls back to demo data above)
   async loadFromAPI() {
-    if (typeof API !== 'undefined' && API.isLoggedIn()) {
-      try {
-        const result = await API.getAccounts();
-        if (result.success && result.accounts.length > 0) {
-          this.accounts = result.accounts.map(a => ({
-            id: a._id,
-            name: a.name,
-            phone: a.phone,
-            country: a.countryCode,
-            category: a.categoryLabel || a.category,
-            color: a.color,
-            colorClass: a.colorClass,
-            status: a.status,
-            quality: a.quality,
-            qualityLabel: a.qualityLabel,
-            messages: a.totalMessages || a.messagesThisMonth || 0,
-            contacts: a.totalContacts || 0,
-            delivery: a.deliveryRate || '0%',
-            waba_id: a.wabaId || '',
-            created: new Date(a.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-          }));
-          this.activeId = this.accounts[0].id;
-        }
-      } catch (e) {
-        console.log('Using demo account data');
+    if (typeof API === 'undefined' || !API.isLoggedIn()) return;
+    const result = await API.getAccounts();
+    if (result.success) {
+      this.accounts = (result.accounts || []).map(a => ({
+        id: a._id,
+        name: a.name,
+        phone: a.phone,
+        country: a.countryCode,
+        category: a.category,
+        categoryLabel: a.categoryLabel || a.category,
+        color: a.color,
+        colorClass: a.colorClass,
+        status: a.status,
+        quality: a.quality,
+        qualityLabel: a.qualityLabel,
+        messages: a.totalMessages || 0,
+        contacts: a.totalContacts || 0,
+        wabaId: a.wabaId || '',
+        phoneNumberId: a.phoneNumberId || '',
+        hasToken: !!a.isVerified || a.status === 'connected', // token itself is never sent to the browser
+        created: new Date(a.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      }));
+      if (!this.activeId || !this.getActive()) {
+        this.activeId = this.accounts.length ? this.accounts[0].id : null;
       }
     }
   }
@@ -195,6 +112,11 @@ async function initAccountSystem() {
   initAccountSwitcherDropdown();
 }
 
+const WA_ICON_SVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z" fill="currentColor"/>
+  <path d="M12 2C6.477 2 2 6.477 2 12c0 1.89.525 3.66 1.438 5.168L2 22l4.832-1.438A9.955 9.955 0 0012 22c5.523 0 10-4.477 10-10S17.523 2 12 2z" fill="currentColor"/>
+</svg>`;
+
 function renderAccountSwitcher() {
   const active = accountStore.getActive();
   const nameEl = document.getElementById('activeAccountName');
@@ -203,28 +125,26 @@ function renderAccountSwitcher() {
   const badgeEl = document.getElementById('navAccountBadge');
   const listEl = document.getElementById('accountList');
 
-  if (nameEl) nameEl.textContent = active.name;
-  if (numberEl) numberEl.textContent = active.phone;
+  if (nameEl) nameEl.textContent = active ? active.name : 'No account yet';
+  if (numberEl) numberEl.textContent = active ? active.phone : 'Add one to get started';
   if (countEl) countEl.textContent = accountStore.accounts.length + ' account' + (accountStore.accounts.length !== 1 ? 's' : '');
   if (badgeEl) badgeEl.textContent = accountStore.accounts.length;
 
   const avatarEl = document.querySelector('.account-current .account-avatar');
-  if (avatarEl) {
-    avatarEl.className = 'account-avatar ' + active.colorClass;
-  }
+  if (avatarEl) avatarEl.className = 'account-avatar ' + (active ? active.colorClass : 'green');
 
   if (!listEl) return;
+  if (!accountStore.accounts.length) {
+    listEl.innerHTML = `<div style="padding:14px 16px;color:#86868b;font-size:13px;">
+      No WhatsApp accounts connected yet.<br>Use “Add Account” below to connect your first number.</div>`;
+    return;
+  }
   listEl.innerHTML = accountStore.accounts.map(acc => `
     <button class="account-option ${acc.id === accountStore.activeId ? 'active' : ''}" data-account-id="${acc.id}">
-      <div class="account-avatar ${acc.colorClass}">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-          <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z" fill="currentColor"/>
-          <path d="M12 2C6.477 2 2 6.477 2 12c0 1.89.525 3.66 1.438 5.168L2 22l4.832-1.438A9.955 9.955 0 0012 22c5.523 0 10-4.477 10-10S17.523 2 12 2z" fill="currentColor"/>
-        </svg>
-      </div>
+      <div class="account-avatar ${acc.colorClass}">${WA_ICON_SVG}</div>
       <div class="account-option-info">
         <span class="account-option-name">${escapeHtml(acc.name)}</span>
-        <span class="account-option-number">${acc.phone}</span>
+        <span class="account-option-number">${escapeHtml(acc.phone)}</span>
       </div>
       <span class="account-option-status ${acc.status}"></span>
     </button>
@@ -235,7 +155,6 @@ function renderAccountSwitcher() {
       accountStore.setActive(opt.dataset.accountId);
       renderAccountSwitcher();
       renderAccountsPage();
-      updateDashboardForAccount();
       document.getElementById('accountSwitcher').classList.remove('open');
     });
   });
@@ -269,16 +188,11 @@ function initAccountSwitcherDropdown() {
   });
 }
 
-function updateDashboardForAccount() {
-  const acc = accountStore.getActive();
-  const planUsage = document.querySelector('.plan-usage');
-  const planFill = document.querySelector('.plan-bar-fill');
-  if (planUsage) {
-    planUsage.textContent = acc.messages.toLocaleString() + ' / 10,000 msgs';
-  }
-  if (planFill) {
-    planFill.style.width = Math.min((acc.messages / 10000) * 100, 100) + '%';
-  }
+function statusMeta(status) {
+  if (status === 'connected') return { dot: 'green', label: 'Connected' };
+  if (status === 'connecting') return { dot: 'yellow', label: 'Connecting…' };
+  if (status === 'error') return { dot: 'red', label: 'Connection error' };
+  return { dot: 'red', label: 'Not connected — add API credentials & test' };
 }
 
 function renderAccountsPage() {
@@ -293,94 +207,125 @@ function renderAccountsPage() {
   if (totalMsg) totalMsg.textContent = accountStore.accounts.reduce((s, a) => s + a.messages, 0).toLocaleString();
   if (totalContacts) totalContacts.textContent = accountStore.accounts.reduce((s, a) => s + a.contacts, 0).toLocaleString();
 
-  grid.innerHTML = accountStore.accounts.map(acc => `
+  if (!accountStore.accounts.length) {
+    grid.innerHTML = `
+      <div style="grid-column:1/-1;text-align:center;padding:48px 20px;color:#86868b;">
+        <h4 style="margin:0 0 8px;color:#1d1d1f;">Connect your first WhatsApp number</h4>
+        <p style="margin:0 0 16px;font-size:14px;">You'll need a <strong>Phone Number ID</strong> and <strong>Access Token</strong> from
+        Meta Business Manager (WhatsApp&nbsp;→&nbsp;API Setup). Add them here, test the connection, and you're ready to send.</p>
+        <button class="btn" id="emptyAddAccountBtn">+ Add WhatsApp Account</button>
+      </div>`;
+    const btn = document.getElementById('emptyAddAccountBtn');
+    if (btn) btn.addEventListener('click', () => openModal());
+    return;
+  }
+
+  grid.innerHTML = accountStore.accounts.map(acc => {
+    const sm = statusMeta(acc.status);
+    return `
     <div class="account-card ${acc.id === accountStore.activeId ? 'active-account' : ''}" data-account-id="${acc.id}">
       <div class="account-card-header">
-        <div class="account-card-avatar" style="background:${acc.color}">
-          <svg viewBox="0 0 24 24" fill="none">
-            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z" fill="currentColor"/>
-            <path d="M12 2C6.477 2 2 6.477 2 12c0 1.89.525 3.66 1.438 5.168L2 22l4.832-1.438A9.955 9.955 0 0012 22c5.523 0 10-4.477 10-10S17.523 2 12 2z" fill="currentColor"/>
-          </svg>
-        </div>
+        <div class="account-card-avatar" style="background:${acc.color}">${WA_ICON_SVG}</div>
         <div class="account-card-title">
           <span class="account-card-name">${escapeHtml(acc.name)}</span>
-          <span class="account-card-number">${acc.phone}</span>
-          <span class="account-card-category">${acc.category}</span>
+          <span class="account-card-number">${escapeHtml(acc.phone)}</span>
+          <span class="account-card-category">${escapeHtml(acc.categoryLabel)}</span>
         </div>
       </div>
       <div class="account-card-stats">
         <div class="account-card-stat">
           <span class="account-card-stat-val">${acc.messages.toLocaleString()}</span>
-          <span class="account-card-stat-lbl">Messages</span>
+          <span class="account-card-stat-lbl">Messages Sent</span>
         </div>
         <div class="account-card-stat">
-          <span class="account-card-stat-val">${acc.contacts.toLocaleString()}</span>
-          <span class="account-card-stat-lbl">Contacts</span>
+          <span class="account-card-stat-val">${acc.phoneNumberId ? 'Yes' : 'No'}</span>
+          <span class="account-card-stat-lbl">API Credentials</span>
         </div>
         <div class="account-card-stat">
-          <span class="account-card-stat-val">${acc.delivery}</span>
-          <span class="account-card-stat-lbl">Delivery</span>
+          <span class="account-card-stat-val">${escapeHtml(acc.qualityLabel || '—')}</span>
+          <span class="account-card-stat-lbl">Quality</span>
         </div>
       </div>
       <div class="account-card-meta">
         <div class="account-card-status">
-          <span class="status-dot ${acc.status === 'online' ? 'green' : acc.status === 'connecting' ? 'yellow' : 'red'}"></span>
-          ${acc.status === 'online' ? 'Connected' : acc.status === 'connecting' ? 'Connecting…' : 'Disconnected'}
+          <span class="status-dot ${sm.dot}"></span>
+          ${sm.label}
         </div>
-        <span class="account-card-quality quality-${acc.quality}">${acc.qualityLabel} Quality</span>
       </div>
       <div class="account-card-actions">
-        <button class="btn btn-sm switch-account-btn" data-account-id="${acc.id}"
-          ${acc.id === accountStore.activeId ? 'disabled style="opacity:0.5;cursor:default"' : ''}>
-          ${acc.id === accountStore.activeId ? 'Current' : 'Switch To'}
-        </button>
+        <button class="btn btn-sm test-account-btn" data-account-id="${acc.id}">Test Connection</button>
         <button class="btn btn-sm btn-outline edit-account-btn" data-account-id="${acc.id}">Edit</button>
-        <button class="btn btn-sm btn-danger-outline remove-account-btn" data-account-id="${acc.id}"
-          ${accountStore.accounts.length <= 1 ? 'disabled style="opacity:0.3;cursor:default"' : ''}>
-          Remove
-        </button>
+        <button class="btn btn-sm btn-danger-outline remove-account-btn" data-account-id="${acc.id}">Remove</button>
       </div>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
 
-  grid.querySelectorAll('.switch-account-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      accountStore.setActive(btn.dataset.accountId);
+  grid.querySelectorAll('.test-account-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      const original = btn.textContent;
+      btn.textContent = 'Testing…';
+      const result = await API.testWAAccount(btn.dataset.accountId);
+      btn.disabled = false;
+      btn.textContent = original;
+      alert(result.message || (result.success ? 'Connected!' : 'Connection failed.'));
+      await accountStore.loadFromAPI();
       renderAccountSwitcher();
       renderAccountsPage();
-      updateDashboardForAccount();
+    });
+  });
+
+  grid.querySelectorAll('.edit-account-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const acc = accountStore.accounts.find(a => a.id === btn.dataset.accountId);
+      if (acc) openModal(acc);
     });
   });
 
   grid.querySelectorAll('.remove-account-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      if (accountStore.accounts.length <= 1) return;
+    btn.addEventListener('click', async () => {
       const acc = accountStore.accounts.find(a => a.id === btn.dataset.accountId);
-      if (acc && confirm(`Remove "${acc.name}" (${acc.phone})? This will disconnect the WhatsApp Business API for this number.`)) {
-        accountStore.remove(btn.dataset.accountId);
-        renderAccountSwitcher();
-        renderAccountsPage();
-        updateDashboardForAccount();
-      }
+      if (!acc) return;
+      if (!confirm(`Remove "${acc.name}" (${acc.phone})? This disconnects the number from this dashboard.`)) return;
+      const result = await API.deleteWAAccount(acc.id);
+      if (!result.success) return alert(result.message || 'Failed to remove account.');
+      await accountStore.loadFromAPI();
+      renderAccountSwitcher();
+      renderAccountsPage();
     });
   });
 }
 
-/* ========== ADD ACCOUNT MODAL ========== */
+/* ========== ADD / EDIT ACCOUNT MODAL ========== */
 let modalCurrentStep = 1;
+let editingAccountId = null;
 
-function openModal() {
+function openModal(account) {
   const modal = document.getElementById('addAccountModal');
+  editingAccountId = account ? account.id : null;
   modalCurrentStep = 1;
   setModalStep(1);
   modal.classList.add('open');
-  document.getElementById('newAccountName').value = '';
-  document.getElementById('newAccountPhone').value = '';
-  document.querySelectorAll('.otp-input').forEach(i => i.value = '');
+
+  document.getElementById('newAccountName').value = account ? account.name : '';
+  const phoneInput = document.getElementById('newAccountPhone');
+  phoneInput.value = account ? account.phone.replace(account.country || '', '') : '';
+  phoneInput.disabled = !!account; // phone can't change after creation
+  document.getElementById('newAccountWabaId').value = account ? account.wabaId : '';
+  document.getElementById('newAccountPhoneNumberId').value = account ? account.phoneNumberId : '';
+  const tokenInput = document.getElementById('newAccountToken');
+  tokenInput.value = '';
+  tokenInput.placeholder = account && account.phoneNumberId
+    ? 'Leave blank to keep the current token'
+    : 'Paste your permanent access token…';
+
+  const title = document.querySelector('#addAccountModal .modal-header h3');
+  if (title) title.textContent = account ? 'Edit WhatsApp Account' : 'Connect WhatsApp Account';
 }
 
 function closeModal() {
   document.getElementById('addAccountModal').classList.remove('open');
+  editingAccountId = null;
 }
 
 function setModalStep(step) {
@@ -398,64 +343,59 @@ function setModalStep(step) {
   if (target) target.classList.add('active');
 
   backBtn.style.visibility = step === 1 ? 'hidden' : 'visible';
-  nextBtn.textContent = step === 3 ? 'Connect Account' : 'Continue';
+  nextBtn.textContent = step === 3 ? (editingAccountId ? 'Save Changes' : 'Connect Account') : 'Continue';
 }
 
 async function finishAddAccount() {
-  const name = document.getElementById('newAccountName').value.trim() || 'New Account';
+  const name = document.getElementById('newAccountName').value.trim();
   const country = document.getElementById('newAccountCountry').value;
-  const phone = document.getElementById('newAccountPhone').value.trim() || '000 000 0000';
+  const phone = document.getElementById('newAccountPhone').value.trim();
   const category = document.getElementById('newAccountCategory');
   const categoryVal = category.value || 'general';
   const categoryText = category.options[category.selectedIndex]?.text || 'General';
   const activeSwatch = document.querySelector('.color-swatch.active');
   const color = activeSwatch ? activeSwatch.dataset.color : '#25D366';
+  const wabaId = document.getElementById('newAccountWabaId').value.trim();
+  const phoneNumberId = document.getElementById('newAccountPhoneNumberId').value.trim();
+  const accessToken = document.getElementById('newAccountToken').value.trim();
+
+  if (!name) return alert('Please give this account a name.');
+  if (!editingAccountId && !phone) return alert('Please enter the WhatsApp phone number.');
+  if (typeof API === 'undefined' || !API.isLoggedIn()) return alert('Please log in first.');
 
   const colorMap = {
-    '#25D366': 'green',
-    '#34B7F1': 'blue',
-    '#9B59B6': 'purple',
-    '#FF9500': 'orange',
-    '#FF6B6B': 'red',
-    '#1ABC9C': 'teal'
+    '#25D366': 'green', '#34B7F1': 'blue', '#9B59B6': 'purple',
+    '#FF9500': 'orange', '#FF6B6B': 'red', '#1ABC9C': 'teal'
   };
 
-  const accountData = {
+  const payload = {
     name,
-    phone: country + phone.replace(/\s/g, ''),
-    countryCode: country,
     category: categoryVal,
     categoryLabel: categoryText,
     color,
     colorClass: colorMap[color] || 'green',
+    wabaId,
+    phoneNumberId,
   };
+  // Only send a token if the user typed one (blank on edit = keep existing).
+  if (accessToken) payload.accessToken = accessToken;
 
-  // Try API first
-  if (typeof API !== 'undefined' && API.isLoggedIn()) {
-    const result = await API.createWAAccount(accountData);
-    if (result.success) {
-      await accountStore.loadFromAPI();
-      renderAccountSwitcher();
-      renderAccountsPage();
-      closeModal();
-      return;
-    } else {
-      alert(result.message || 'Failed to add account.');
-      return;
-    }
+  let result;
+  if (editingAccountId) {
+    result = await API.updateWAAccount(editingAccountId, payload);
+  } else {
+    result = await API.createWAAccount({ ...payload, phone: country + phone.replace(/\s/g, ''), countryCode: country });
   }
+  if (!result.success) return alert(result.message || 'Failed to save account.');
 
-  // Fallback: local store
-  const added = accountStore.add({
-    ...accountData,
-    phone: country + ' ' + phone,
-    category: categoryText,
-  });
-
-  if (added) {
-    renderAccountSwitcher();
-    renderAccountsPage();
-    closeModal();
+  await accountStore.loadFromAPI();
+  renderAccountSwitcher();
+  renderAccountsPage();
+  closeModal();
+  if (phoneNumberId && accessToken) {
+    alert('Account saved. Click "Test Connection" on the account card to verify it with Meta.');
+  } else if (!editingAccountId) {
+    alert('Account saved. To send real messages, edit it and add your Phone Number ID and Access Token from Meta Business Manager.');
   }
 }
 
@@ -466,7 +406,7 @@ function initModal() {
   const backBtn = document.getElementById('modalBack');
   const addBtn = document.getElementById('addNewAccountBtn');
 
-  if (addBtn) addBtn.addEventListener('click', openModal);
+  if (addBtn) addBtn.addEventListener('click', () => openModal());
   closeBtn.addEventListener('click', closeModal);
 
   modal.addEventListener('click', e => {
@@ -485,20 +425,6 @@ function initModal() {
     if (modalCurrentStep > 1) setModalStep(modalCurrentStep - 1);
   });
 
-  // OTP auto-advance
-  document.querySelectorAll('.otp-input').forEach((input, i, all) => {
-    input.addEventListener('input', () => {
-      if (input.value.length === 1 && i < all.length - 1) {
-        all[i + 1].focus();
-      }
-    });
-    input.addEventListener('keydown', e => {
-      if (e.key === 'Backspace' && !input.value && i > 0) {
-        all[i - 1].focus();
-      }
-    });
-  });
-
   // Color swatch selection
   document.querySelectorAll('.color-swatch').forEach(swatch => {
     swatch.addEventListener('click', () => {
@@ -508,31 +434,191 @@ function initModal() {
   });
 }
 
-/* ========== ANIMATED COUNTERS ========== */
-function initCounters() {
-  const counters = document.querySelectorAll('.stat-value[data-count]');
+/* ========== REAL DASHBOARD STATS + CHARTS ========== */
+let chartRefs = {};
 
-  counters.forEach(counter => {
-    const target = parseInt(counter.dataset.count, 10);
-    const suffix = counter.dataset.suffix || '';
-    const duration = 1200;
-    const start = performance.now();
+function animateValue(el, target, suffix) {
+  const duration = 900;
+  const start = performance.now();
+  function update(now) {
+    const progress = Math.min((now - start) / duration, 1);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    el.textContent = Math.round(target * eased).toLocaleString() + (suffix || '');
+    if (progress < 1) requestAnimationFrame(update);
+  }
+  requestAnimationFrame(update);
+}
 
-    function update(now) {
-      const elapsed = now - start;
-      const progress = Math.min(elapsed / duration, 1);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      const current = Math.round(target * eased);
+function setStat(id, value, suffix) {
+  const el = document.getElementById(id);
+  if (el) animateValue(el, value || 0, suffix);
+}
 
-      counter.textContent = current.toLocaleString() + (suffix ? suffix : '');
+async function loadDashboardStats() {
+  if (typeof API === 'undefined' || !API.isLoggedIn()) return;
+  const res = await API.getDashboardStats();
+  if (!res.success || !res.stats) return;
+  const s = res.stats;
 
-      if (progress < 1) {
-        requestAnimationFrame(update);
-      }
+  setStat('statMsgsToday', s.messagesToday);
+  setStat('statContacts', s.totalContacts);
+  setStat('statDelivery', s.deliveryRate, '%');
+  setStat('statMonth', s.monthTotal);
+
+  const donutTotal = document.getElementById('donutTotal');
+  if (donutTotal) donutTotal.textContent = (s.monthTotal || 0).toLocaleString();
+  const allDel = document.getElementById('allDeliveryStat');
+  if (allDel) allDel.textContent = s.deliveryRate + '%';
+
+  // Sidebar plan meter — real monthly volume (Meta's free tier ≈ 1,000 conversations/month).
+  const user = API.getUser();
+  const planName = document.getElementById('planName');
+  if (planName && user) planName.textContent = (user.plan === 'free' || !user.plan) ? 'Free Plan' : user.plan.charAt(0).toUpperCase() + user.plan.slice(1) + ' Plan';
+  const planUsage = document.getElementById('planUsage');
+  if (planUsage) planUsage.textContent = (s.monthTotal || 0).toLocaleString() + ' msgs this month';
+  const planBar = document.getElementById('planBarFill');
+  if (planBar) planBar.style.width = Math.min(((s.monthTotal || 0) / 1000) * 100, 100) + '%';
+
+  renderCharts(s);
+  fillDashboardLists();
+}
+
+// Fill the "Campaign Performance" and "Active Templates" dashboard cards with real data.
+async function fillDashboardLists() {
+  const campaignEl = document.getElementById('dashCampaignList');
+  if (campaignEl) {
+    const res = await API.getBroadcasts();
+    const sentOnes = (res.success ? res.broadcasts : []).filter(b => (b.sentCount || 0) > 0).slice(0, 3);
+    if (sentOnes.length) {
+      campaignEl.innerHTML = sentOnes.map(b => {
+        const pct = (n) => b.sentCount ? Math.round((n / b.sentCount) * 100) : 0;
+        const delivered = pct(b.deliveredCount || 0);
+        return `
+        <div class="campaign-item">
+          <div class="campaign-info">
+            <span class="campaign-name">${escapeHtml(b.name)}</span>
+            <span class="campaign-meta">${new Date(b.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · ${b.sentCount} sent</span>
+          </div>
+          <div class="campaign-stats">
+            <div class="campaign-stat"><span class="campaign-stat-val">${delivered}%</span><span class="campaign-stat-lbl">Delivered</span></div>
+            <div class="campaign-stat"><span class="campaign-stat-val">${pct(b.readCount || 0)}%</span><span class="campaign-stat-lbl">Read</span></div>
+            <div class="campaign-stat"><span class="campaign-stat-val">${b.failedCount || 0}</span><span class="campaign-stat-lbl">Failed</span></div>
+          </div>
+          <div class="campaign-bar"><div class="campaign-bar-fill" style="width:${delivered}%"></div></div>
+        </div>`;
+      }).join('');
+    } else {
+      campaignEl.innerHTML = `<div style="padding:28px 16px;text-align:center;color:#86868b;font-size:13px;">
+        No broadcasts sent yet. Create one under <strong>Broadcasts</strong> and press <strong>Send now</strong>.</div>`;
     }
+  }
 
-    requestAnimationFrame(update);
+  const tplBody = document.getElementById('dashTemplatesBody');
+  if (tplBody) {
+    const res = await API.getTemplates();
+    const tpls = (res.success ? res.templates : []).slice(0, 5);
+    if (tpls.length) {
+      tplBody.innerHTML = tpls.map(t => `
+        <tr>
+          <td class="cell-name">${escapeHtml(t.name)}</td>
+          <td><span class="tag tag-blue">${escapeHtml(t.category)}</span></td>
+          <td><span class="status-dot ${t.status === 'approved' ? 'green' : 'yellow'}"></span>${escapeHtml(t.status)}</td>
+          <td>${t.timesUsed || 0}</td>
+          <td>${escapeHtml((t.language || 'en').toUpperCase())}</td>
+        </tr>`).join('');
+    } else {
+      tplBody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:24px;color:#86868b;">
+        No templates yet. Create one under <strong>Templates</strong>.</td></tr>`;
+    }
+  }
+}
+
+function renderCharts(s) {
+  if (typeof Chart === 'undefined') { console.warn('Chart library not loaded — skipping charts.'); return; }
+
+  Chart.defaults.font.family = '"DM Sans", -apple-system, sans-serif';
+  Chart.defaults.font.size = 12;
+  Chart.defaults.color = '#86868b';
+
+  const labels = s.series.map(p => p.day);
+  const sent = s.series.map(p => p.sent);
+  const delivered = s.series.map(p => p.delivered);
+
+  const lineOpts = {
+    responsive: true, maintainAspectRatio: false,
+    interaction: { intersect: false, mode: 'index' },
+    plugins: {
+      legend: { position: 'top', align: 'end', labels: { boxWidth: 8, boxHeight: 8, usePointStyle: true, pointStyle: 'circle', padding: 16, font: { size: 12, weight: 500 } } },
+      tooltip: { backgroundColor: 'rgba(0,0,0,0.8)', titleFont: { weight: 600 }, bodyFont: { size: 12 }, padding: 12, cornerRadius: 10, displayColors: true, boxWidth: 8, boxHeight: 8, usePointStyle: true },
+    },
+    scales: {
+      x: { grid: { display: false }, border: { display: false }, ticks: { padding: 8 } },
+      y: { grid: { color: 'rgba(0,0,0,0.04)', drawBorder: false }, border: { display: false }, ticks: { padding: 12, precision: 0 }, beginAtZero: true },
+    },
+  };
+
+  const lineDataset = (label, data, color, bg) => ({
+    label, data, borderColor: color, backgroundColor: bg, fill: true, tension: 0.4,
+    borderWidth: 2.5, pointRadius: 0, pointHoverRadius: 6,
+    pointHoverBackgroundColor: color, pointHoverBorderColor: '#fff', pointHoverBorderWidth: 2,
   });
+
+  const msgCtx = document.getElementById('messageChart');
+  if (msgCtx) {
+    if (chartRefs.message) chartRefs.message.destroy();
+    chartRefs.message = new Chart(msgCtx, {
+      type: 'line',
+      data: { labels, datasets: [
+        lineDataset('Sent', sent, '#25D366', 'rgba(37, 211, 102, 0.08)'),
+        lineDataset('Delivered', delivered, '#34B7F1', 'rgba(52, 183, 241, 0.05)'),
+      ]},
+      options: lineOpts,
+    });
+  }
+
+  const b = s.breakdown;
+  const breakCtx = document.getElementById('breakdownChart');
+  if (breakCtx) {
+    if (chartRefs.breakdown) chartRefs.breakdown.destroy();
+    chartRefs.breakdown = new Chart(breakCtx, {
+      type: 'doughnut',
+      data: {
+        labels: ['Delivered', 'Read', 'Failed', 'Pending'],
+        datasets: [{
+          data: [b.delivered, b.read, b.failed, b.pending + b.sent],
+          backgroundColor: ['#25D366', '#34B7F1', '#FF6B6B', '#FFC107'],
+          borderWidth: 0, spacing: 3, borderRadius: 4,
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, cutout: '72%',
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: 'rgba(0,0,0,0.8)', padding: 12, cornerRadius: 10, bodyFont: { size: 12 },
+            callbacks: {
+              label: ctx => {
+                const total = ctx.dataset.data.reduce((a, x) => a + x, 0) || 1;
+                const pct = ((ctx.parsed / total) * 100).toFixed(1);
+                return ` ${ctx.label}: ${ctx.parsed.toLocaleString()} (${pct}%)`;
+              },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  const engCtx = document.getElementById('engagementChart');
+  if (engCtx) {
+    if (chartRefs.engagement) chartRefs.engagement.destroy();
+    const bar = (label, data, color) => ({ label, data, backgroundColor: color, borderRadius: 6, borderSkipped: false, barPercentage: 0.6, categoryPercentage: 0.7 });
+    chartRefs.engagement = new Chart(engCtx, {
+      type: 'bar',
+      data: { labels, datasets: [bar('Sent', sent, '#25D366'), bar('Delivered', delivered, '#34B7F1')] },
+      options: lineOpts,
+    });
+  }
 }
 
 /* ========== MOBILE MENU ========== */
@@ -553,233 +639,6 @@ function initMobileMenu() {
   });
 }
 
-/* ========== CHARTS ========== */
-function initCharts() {
-  Chart.defaults.font.family = '"DM Sans", -apple-system, sans-serif';
-  Chart.defaults.font.size = 12;
-  Chart.defaults.color = '#86868b';
-
-  initMessageChart();
-  initBreakdownChart();
-  initEngagementChart();
-}
-
-function initMessageChart() {
-  const ctx = document.getElementById('messageChart');
-  if (!ctx) return;
-
-  const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  const sent = [1240, 1580, 1420, 1890, 2100, 980, 1847];
-  const received = [890, 1120, 1050, 1340, 1520, 680, 1260];
-
-  new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels,
-      datasets: [
-        {
-          label: 'Sent',
-          data: sent,
-          borderColor: '#25D366',
-          backgroundColor: 'rgba(37, 211, 102, 0.08)',
-          fill: true,
-          tension: 0.4,
-          borderWidth: 2.5,
-          pointRadius: 0,
-          pointHoverRadius: 6,
-          pointHoverBackgroundColor: '#25D366',
-          pointHoverBorderColor: '#fff',
-          pointHoverBorderWidth: 2,
-        },
-        {
-          label: 'Received',
-          data: received,
-          borderColor: '#34B7F1',
-          backgroundColor: 'rgba(52, 183, 241, 0.05)',
-          fill: true,
-          tension: 0.4,
-          borderWidth: 2.5,
-          pointRadius: 0,
-          pointHoverRadius: 6,
-          pointHoverBackgroundColor: '#34B7F1',
-          pointHoverBorderColor: '#fff',
-          pointHoverBorderWidth: 2,
-        }
-      ]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: {
-        intersect: false,
-        mode: 'index'
-      },
-      plugins: {
-        legend: {
-          position: 'top',
-          align: 'end',
-          labels: {
-            boxWidth: 8,
-            boxHeight: 8,
-            usePointStyle: true,
-            pointStyle: 'circle',
-            padding: 16,
-            font: { size: 12, weight: 500 }
-          }
-        },
-        tooltip: {
-          backgroundColor: 'rgba(0,0,0,0.8)',
-          titleFont: { weight: 600 },
-          bodyFont: { size: 12 },
-          padding: 12,
-          cornerRadius: 10,
-          displayColors: true,
-          boxWidth: 8,
-          boxHeight: 8,
-          usePointStyle: true,
-        }
-      },
-      scales: {
-        x: {
-          grid: { display: false },
-          border: { display: false },
-          ticks: { padding: 8 }
-        },
-        y: {
-          grid: { color: 'rgba(0,0,0,0.04)', drawBorder: false },
-          border: { display: false },
-          ticks: { padding: 12 },
-          beginAtZero: true,
-        }
-      }
-    }
-  });
-}
-
-function initBreakdownChart() {
-  const ctx = document.getElementById('breakdownChart');
-  if (!ctx) return;
-
-  new Chart(ctx, {
-    type: 'doughnut',
-    data: {
-      labels: ['Delivered', 'Read', 'Failed', 'Pending'],
-      datasets: [{
-        data: [5420, 2340, 180, 480],
-        backgroundColor: ['#25D366', '#34B7F1', '#FF6B6B', '#FFC107'],
-        borderWidth: 0,
-        spacing: 3,
-        borderRadius: 4,
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      cutout: '72%',
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          backgroundColor: 'rgba(0,0,0,0.8)',
-          padding: 12,
-          cornerRadius: 10,
-          bodyFont: { size: 12 },
-          callbacks: {
-            label: ctx => {
-              const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
-              const pct = ((ctx.parsed / total) * 100).toFixed(1);
-              return ` ${ctx.label}: ${ctx.parsed.toLocaleString()} (${pct}%)`;
-            }
-          }
-        }
-      }
-    }
-  });
-}
-
-function initEngagementChart() {
-  const ctx = document.getElementById('engagementChart');
-  if (!ctx) return;
-
-  const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
-  new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [
-        {
-          label: 'Delivered',
-          data: [1240, 1580, 1420, 1890, 2100, 980, 1847],
-          backgroundColor: '#25D366',
-          borderRadius: 6,
-          borderSkipped: false,
-          barPercentage: 0.6,
-          categoryPercentage: 0.7,
-        },
-        {
-          label: 'Read',
-          data: [890, 1120, 1050, 1340, 1520, 680, 1260],
-          backgroundColor: '#34B7F1',
-          borderRadius: 6,
-          borderSkipped: false,
-          barPercentage: 0.6,
-          categoryPercentage: 0.7,
-        },
-        {
-          label: 'Replied',
-          data: [320, 410, 380, 490, 560, 240, 450],
-          backgroundColor: '#9B59B6',
-          borderRadius: 6,
-          borderSkipped: false,
-          barPercentage: 0.6,
-          categoryPercentage: 0.7,
-        }
-      ]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: {
-        intersect: false,
-        mode: 'index'
-      },
-      plugins: {
-        legend: {
-          position: 'top',
-          align: 'end',
-          labels: {
-            boxWidth: 8,
-            boxHeight: 8,
-            usePointStyle: true,
-            pointStyle: 'circle',
-            padding: 16,
-            font: { size: 12, weight: 500 }
-          }
-        },
-        tooltip: {
-          backgroundColor: 'rgba(0,0,0,0.8)',
-          padding: 12,
-          cornerRadius: 10,
-          bodyFont: { size: 12 },
-        }
-      },
-      scales: {
-        x: {
-          grid: { display: false },
-          border: { display: false },
-          ticks: { padding: 8 }
-        },
-        y: {
-          grid: { color: 'rgba(0,0,0,0.04)', drawBorder: false },
-          border: { display: false },
-          ticks: { padding: 12 },
-          beginAtZero: true,
-        }
-      }
-    }
-  });
-}
-
 /* ========== CHIP TOGGLES ========== */
 document.addEventListener('click', e => {
   if (e.target.classList.contains('chip') && e.target.closest('.card-actions')) {
@@ -795,47 +654,13 @@ document.addEventListener('click', e => {
   }
 });
 
-/* ========== CONVERSATION CLICK ========== */
+/* ========== CONVERSATION CLICK (preview UI) ========== */
 document.querySelectorAll('.convo-item-full').forEach(item => {
   item.addEventListener('click', () => {
     document.querySelectorAll('.convo-item-full').forEach(i => i.classList.remove('active'));
     item.classList.add('active');
   });
 });
-
-/* ========== CHAT SEND ========== */
-const chatInput = document.querySelector('.chat-text-input');
-const sendBtn = document.querySelector('.send-btn');
-
-if (chatInput && sendBtn) {
-  function sendMessage() {
-    const text = chatInput.value.trim();
-    if (!text) return;
-
-    const messages = document.querySelector('.chat-messages');
-    const msgDiv = document.createElement('div');
-    msgDiv.className = 'message outgoing';
-
-    const now = new Date();
-    const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-    msgDiv.innerHTML = `
-      <div class="message-bubble">
-        <p>${escapeHtml(text)}</p>
-        <span class="message-time">${time} <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#34B7F1" stroke-width="2"><polyline points="1 12 5 16 12 6"/><polyline points="7 12 11 16 20 6"/></svg></span>
-      </div>
-    `;
-
-    messages.appendChild(msgDiv);
-    chatInput.value = '';
-    messages.scrollTop = messages.scrollHeight;
-  }
-
-  sendBtn.addEventListener('click', sendMessage);
-  chatInput.addEventListener('keydown', e => {
-    if (e.key === 'Enter') sendMessage();
-  });
-}
 
 function escapeHtml(str) {
   const div = document.createElement('div');

@@ -71,7 +71,7 @@
         <a href="#" class="nav-item" data-page="conversations">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
           <span>Conversations</span>
-          <span class="nav-badge">24</span>
+          
         </a>
         <a href="#" class="nav-item" data-page="contacts">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
@@ -132,11 +132,11 @@
     <div class="sidebar-footer">
       <div class="sidebar-plan">
         <div class="plan-info">
-          <span class="plan-name">Business Pro</span>
-          <span class="plan-usage">8,420 / 10,000 msgs</span>
+          <span class="plan-name" id="planName">Free Plan</span>
+          <span class="plan-usage" id="planUsage">0 msgs this month</span>
         </div>
         <div class="plan-bar">
-          <div class="plan-bar-fill" style="width: 84%"></div>
+          <div class="plan-bar-fill" id="planBarFill" style="width: 0%"></div>
         </div>
       </div>
       <div class="sidebar-user">
@@ -187,40 +187,36 @@
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
           </div>
           <div class="stat-body">
-            <span class="stat-value" data-count="1847">0</span>
+            <span class="stat-value" id="statMsgsToday">0</span>
             <span class="stat-label">Messages Today</span>
           </div>
-          <span class="stat-change up">+12.5%</span>
         </div>
         <div class="stat-card">
           <div class="stat-icon blue">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/></svg>
           </div>
           <div class="stat-body">
-            <span class="stat-value" data-count="12540">0</span>
+            <span class="stat-value" id="statContacts">0</span>
             <span class="stat-label">Total Contacts</span>
           </div>
-          <span class="stat-change up">+340</span>
         </div>
         <div class="stat-card">
           <div class="stat-icon purple">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
           </div>
           <div class="stat-body">
-            <span class="stat-value" data-count="94" data-suffix="%">0</span>
-            <span class="stat-label">Delivery Rate</span>
+            <span class="stat-value" id="statDelivery">0%</span>
+            <span class="stat-label">Delivery Rate (30d)</span>
           </div>
-          <span class="stat-change up">+2.1%</span>
         </div>
         <div class="stat-card">
           <div class="stat-icon orange">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
           </div>
           <div class="stat-body">
-            <span class="stat-value" data-count="2" data-suffix="m 14s">0</span>
-            <span class="stat-label">Avg Response Time</span>
+            <span class="stat-value" id="statMonth">0</span>
+            <span class="stat-label">Sent This Month</span>
           </div>
-          <span class="stat-change down">-18s</span>
         </div>
       </div>
 
@@ -230,9 +226,7 @@
           <div class="card-header">
             <h3>Message Volume</h3>
             <div class="card-actions">
-              <button class="chip active" data-range="7d">7D</button>
-              <button class="chip" data-range="30d">30D</button>
-              <button class="chip" data-range="90d">90D</button>
+              <span class="chip active">Last 7 days</span>
             </div>
           </div>
           <div class="chart-area">
@@ -246,7 +240,7 @@
           <div class="chart-area donut-area">
             <canvas id="breakdownChart"></canvas>
             <div class="donut-center">
-              <span class="donut-value">8,420</span>
+              <span class="donut-value" id="donutTotal">0</span>
               <span class="donut-label">This Month</span>
             </div>
           </div>
@@ -268,57 +262,9 @@
             <a href="#" class="card-link">View All</a>
           </div>
           <div class="conversation-list">
-            <div class="convo-item">
-              <div class="convo-avatar" style="background:#25D366">RK</div>
-              <div class="convo-body">
-                <div class="convo-top">
-                  <span class="convo-name">Rahul Kumar</span>
-                  <span class="convo-time">2m ago</span>
-                </div>
-                <p class="convo-msg">Hi, I'd like to know about your enterprise plan pricing…</p>
-              </div>
-              <span class="convo-badge unread">3</span>
-            </div>
-            <div class="convo-item">
-              <div class="convo-avatar" style="background:#34B7F1">PS</div>
-              <div class="convo-body">
-                <div class="convo-top">
-                  <span class="convo-name">Priya Sharma</span>
-                  <span class="convo-time">15m ago</span>
-                </div>
-                <p class="convo-msg">Thank you! The integration works perfectly now.</p>
-              </div>
-            </div>
-            <div class="convo-item">
-              <div class="convo-avatar" style="background:#FF6B6B">AM</div>
-              <div class="convo-body">
-                <div class="convo-top">
-                  <span class="convo-name">Arjun Mehta</span>
-                  <span class="convo-time">1h ago</span>
-                </div>
-                <p class="convo-msg">Can you send me the invoice for last month?</p>
-              </div>
-              <span class="convo-badge unread">1</span>
-            </div>
-            <div class="convo-item">
-              <div class="convo-avatar" style="background:#FFC107">NP</div>
-              <div class="convo-body">
-                <div class="convo-top">
-                  <span class="convo-name">Neha Patel</span>
-                  <span class="convo-time">2h ago</span>
-                </div>
-                <p class="convo-msg">The chatbot flow for onboarding is live. Please review.</p>
-              </div>
-            </div>
-            <div class="convo-item">
-              <div class="convo-avatar" style="background:#9B59B6">VR</div>
-              <div class="convo-body">
-                <div class="convo-top">
-                  <span class="convo-name">Vikram Rao</span>
-                  <span class="convo-time">3h ago</span>
-                </div>
-                <p class="convo-msg">Scheduled broadcast for tomorrow at 10 AM confirmed.</p>
-              </div>
+            <div style="padding:28px 16px;text-align:center;color:#86868b;font-size:13px;">
+              Two-way inbox is coming soon.<br>
+              For now, send campaigns from <strong>Broadcasts</strong> — delivery and read stats show up here on the dashboard.
             </div>
           </div>
         </div>
@@ -329,76 +275,8 @@
             <h3>Campaign Performance</h3>
             <a href="#" class="card-link">All Campaigns</a>
           </div>
-          <div class="campaign-list">
-            <div class="campaign-item">
-              <div class="campaign-info">
-                <span class="campaign-name">Summer Sale Promo</span>
-                <span class="campaign-meta">Sent Jun 1 · 4,200 recipients</span>
-              </div>
-              <div class="campaign-stats">
-                <div class="campaign-stat">
-                  <span class="campaign-stat-val">96.2%</span>
-                  <span class="campaign-stat-lbl">Delivered</span>
-                </div>
-                <div class="campaign-stat">
-                  <span class="campaign-stat-val">72.8%</span>
-                  <span class="campaign-stat-lbl">Read</span>
-                </div>
-                <div class="campaign-stat">
-                  <span class="campaign-stat-val">18.4%</span>
-                  <span class="campaign-stat-lbl">Clicked</span>
-                </div>
-              </div>
-              <div class="campaign-bar">
-                <div class="campaign-bar-fill" style="width:96.2%"></div>
-              </div>
-            </div>
-            <div class="campaign-item">
-              <div class="campaign-info">
-                <span class="campaign-name">Product Launch — Series X</span>
-                <span class="campaign-meta">Sent May 28 · 2,850 recipients</span>
-              </div>
-              <div class="campaign-stats">
-                <div class="campaign-stat">
-                  <span class="campaign-stat-val">94.7%</span>
-                  <span class="campaign-stat-lbl">Delivered</span>
-                </div>
-                <div class="campaign-stat">
-                  <span class="campaign-stat-val">68.1%</span>
-                  <span class="campaign-stat-lbl">Read</span>
-                </div>
-                <div class="campaign-stat">
-                  <span class="campaign-stat-val">22.3%</span>
-                  <span class="campaign-stat-lbl">Clicked</span>
-                </div>
-              </div>
-              <div class="campaign-bar">
-                <div class="campaign-bar-fill" style="width:94.7%"></div>
-              </div>
-            </div>
-            <div class="campaign-item">
-              <div class="campaign-info">
-                <span class="campaign-name">Customer Feedback Survey</span>
-                <span class="campaign-meta">Sent May 25 · 1,600 recipients</span>
-              </div>
-              <div class="campaign-stats">
-                <div class="campaign-stat">
-                  <span class="campaign-stat-val">98.1%</span>
-                  <span class="campaign-stat-lbl">Delivered</span>
-                </div>
-                <div class="campaign-stat">
-                  <span class="campaign-stat-val">81.2%</span>
-                  <span class="campaign-stat-lbl">Read</span>
-                </div>
-                <div class="campaign-stat">
-                  <span class="campaign-stat-val">34.6%</span>
-                  <span class="campaign-stat-lbl">Replied</span>
-                </div>
-              </div>
-              <div class="campaign-bar">
-                <div class="campaign-bar-fill" style="width:98.1%"></div>
-              </div>
-            </div>
+          <div class="campaign-list" id="dashCampaignList">
+            <div style="padding:28px 16px;text-align:center;color:#86868b;font-size:13px;">No broadcasts sent yet.</div>
           </div>
         </div>
       </div>
@@ -420,42 +298,8 @@
                 <th>Language</th>
               </tr>
             </thead>
-            <tbody>
-              <tr>
-                <td class="cell-name">order_confirmation</td>
-                <td><span class="tag tag-blue">Transactional</span></td>
-                <td><span class="status-dot green"></span>Approved</td>
-                <td>3,241</td>
-                <td>EN, HI</td>
-              </tr>
-              <tr>
-                <td class="cell-name">appointment_reminder</td>
-                <td><span class="tag tag-purple">Utility</span></td>
-                <td><span class="status-dot green"></span>Approved</td>
-                <td>2,108</td>
-                <td>EN</td>
-              </tr>
-              <tr>
-                <td class="cell-name">welcome_message</td>
-                <td><span class="tag tag-green">Marketing</span></td>
-                <td><span class="status-dot green"></span>Approved</td>
-                <td>5,672</td>
-                <td>EN, HI, MR</td>
-              </tr>
-              <tr>
-                <td class="cell-name">payment_receipt</td>
-                <td><span class="tag tag-blue">Transactional</span></td>
-                <td><span class="status-dot yellow"></span>Pending</td>
-                <td>—</td>
-                <td>EN</td>
-              </tr>
-              <tr>
-                <td class="cell-name">feedback_request</td>
-                <td><span class="tag tag-green">Marketing</span></td>
-                <td><span class="status-dot green"></span>Approved</td>
-                <td>1,890</td>
-                <td>EN, HI</td>
-              </tr>
+            <tbody id="dashTemplatesBody">
+              <tr><td colspan="5" style="text-align:center;padding:24px;color:#86868b;">No templates yet.</td></tr>
             </tbody>
           </table>
         </div>
@@ -861,9 +705,12 @@
       <div class="card">
         <div class="card-header">
           <h3>Contacts</h3>
-          <div style="display:flex;gap:10px;align-items:center;">
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
             <input type="text" id="contactSearch" class="form-input" placeholder="Search contacts…" style="width:200px;height:36px;">
+            <button class="btn btn-sm btn-outline" id="importContactsBtn">Import CSV</button>
+            <button class="btn btn-sm btn-outline" id="exportContactsBtn">Export</button>
             <button class="btn btn-sm" id="newContactBtn">+ New Contact</button>
+            <input type="file" id="csvFileInput" accept=".csv,text/csv" style="display:none">
           </div>
         </div>
         <div style="overflow-x:auto;">
@@ -952,7 +799,7 @@
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
           </div>
           <div class="stat-body">
-            <span class="stat-value" id="totalAccountsStat">3</span>
+            <span class="stat-value" id="totalAccountsStat">0 / 25</span>
             <span class="stat-label">Connected Accounts</span>
           </div>
         </div>
@@ -961,7 +808,7 @@
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
           </div>
           <div class="stat-body">
-            <span class="stat-value" id="totalMsgAllAccounts">24,680</span>
+            <span class="stat-value" id="totalMsgAllAccounts">0</span>
             <span class="stat-label">Total Messages (All)</span>
           </div>
         </div>
@@ -970,7 +817,7 @@
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/></svg>
           </div>
           <div class="stat-body">
-            <span class="stat-value" id="totalContactsAll">34,200</span>
+            <span class="stat-value" id="totalContactsAll">0</span>
             <span class="stat-label">Total Contacts (All)</span>
           </div>
         </div>
@@ -979,8 +826,8 @@
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
           </div>
           <div class="stat-body">
-            <span class="stat-value">99.9%</span>
-            <span class="stat-label">Avg Uptime (All)</span>
+            <span class="stat-value" id="allDeliveryStat">—</span>
+            <span class="stat-label">Delivery Rate (30d)</span>
           </div>
         </div>
       </div>
@@ -1019,12 +866,12 @@
               <div class="step-line"></div>
               <div class="modal-step" data-step="2">
                 <div class="step-num">2</div>
-                <span>Verify Number</span>
+                <span>Connect API</span>
               </div>
               <div class="step-line"></div>
               <div class="modal-step" data-step="3">
                 <div class="step-num">3</div>
-                <span>Connect API</span>
+                <span>Finish</span>
               </div>
             </div>
 
@@ -1074,48 +921,40 @@
             <div class="modal-step-content" id="step2">
               <div class="verify-instructions">
                 <div class="verify-icon">
-                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#25D366" stroke-width="1.5"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#25D366" stroke-width="1.5"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
                 </div>
-                <h4>Verify Your Phone Number</h4>
-                <p>We'll send a 6-digit verification code to the number you provided.</p>
+                <h4>Connect WhatsApp Business API</h4>
+                <p>Paste your Meta Cloud API credentials. You can also skip this and add them later — but sending needs them.</p>
               </div>
               <div class="form-group">
-                <label class="form-label">Verification Code</label>
-                <div class="otp-inputs">
-                  <input type="text" maxlength="1" class="otp-input" data-otp="1">
-                  <input type="text" maxlength="1" class="otp-input" data-otp="2">
-                  <input type="text" maxlength="1" class="otp-input" data-otp="3">
-                  <input type="text" maxlength="1" class="otp-input" data-otp="4">
-                  <input type="text" maxlength="1" class="otp-input" data-otp="5">
-                  <input type="text" maxlength="1" class="otp-input" data-otp="6">
-                </div>
-                <button class="resend-link">Resend code</button>
+                <label class="form-label">Phone Number ID <span style="color:#FF6B6B">*needed to send</span></label>
+                <input type="text" class="form-input" id="newAccountPhoneNumberId" placeholder="e.g. 112233445566778">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Permanent Access Token <span style="color:#FF6B6B">*needed to send</span></label>
+                <input type="password" class="form-input" id="newAccountToken" placeholder="Paste your permanent access token…">
+              </div>
+              <div class="form-group">
+                <label class="form-label">WhatsApp Business Account ID (optional)</label>
+                <input type="text" class="form-input" id="newAccountWabaId" placeholder="e.g. 102938475610293">
+              </div>
+              <div class="api-help">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                <span>Get these free at <strong>developers.facebook.com</strong> → create an app → add the <strong>WhatsApp</strong> product → API Setup. Copy the <strong>Phone Number ID</strong> and generate a <strong>permanent token</strong> (System User token).</span>
               </div>
             </div>
 
             <div class="modal-step-content" id="step3">
               <div class="verify-instructions">
                 <div class="verify-icon">
-                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#25D366" stroke-width="1.5"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#25D366" stroke-width="1.5"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
                 </div>
-                <h4>Connect WhatsApp Business API</h4>
-                <p>Enter your Meta Business API credentials to link this account.</p>
-              </div>
-              <div class="form-group">
-                <label class="form-label">WhatsApp Business Account ID</label>
-                <input type="text" class="form-input" placeholder="e.g. 102938475610293">
-              </div>
-              <div class="form-group">
-                <label class="form-label">Phone Number ID</label>
-                <input type="text" class="form-input" placeholder="e.g. 112233445566778">
-              </div>
-              <div class="form-group">
-                <label class="form-label">Permanent Access Token</label>
-                <input type="password" class="form-input" placeholder="Paste your token…">
+                <h4>Ready to Save</h4>
+                <p>We'll save this account securely — your access token is encrypted before it touches the database.</p>
               </div>
               <div class="api-help">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                <span>Find these in your <strong>Meta Business Manager</strong> under WhatsApp > API Setup.</span>
+                <span>After saving, click <strong>Test Connection</strong> on the account card — it checks your credentials live with Meta and marks the account <strong>Connected</strong>.</span>
               </div>
             </div>
           </div>
@@ -1147,7 +986,7 @@
       }
     }
   </script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="js/vendor/chart.umd.min.js"></script>
   <script src="js/dashboard.js"></script>
   <script src="js/entities.js"></script>
   <script src="js/quick-actions.js"></script>

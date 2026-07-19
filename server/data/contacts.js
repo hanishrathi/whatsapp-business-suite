@@ -40,6 +40,50 @@ function countAudience(userId, tag) {
     .get(userId, `%"${tag}"%`).c;
 }
 
+// Full audience rows for an actual send (bigger cap than the UI list).
+function listAudience(userId, tag, limit = 5000) {
+  const db = getDb();
+  if (!tag || tag === 'all') {
+    return db.prepare(`SELECT * FROM contacts WHERE userId = ? AND isActive = 1 AND status = 'active' ORDER BY createdAt LIMIT ?`)
+      .all(userId, limit).map(mapRow);
+  }
+  return db.prepare(`SELECT * FROM contacts WHERE userId = ? AND isActive = 1 AND status = 'active' AND tags LIKE ? ORDER BY createdAt LIMIT ?`)
+    .all(userId, `%"${tag}"%`, limit).map(mapRow);
+}
+
+// All active contacts for CSV export (any status).
+function listForExport(userId, limit = 20000) {
+  return getDb().prepare('SELECT * FROM contacts WHERE userId = ? AND isActive = 1 ORDER BY createdAt LIMIT ?')
+    .all(userId, limit).map(mapRow);
+}
+
+// Bulk import: inserts rows, skipping invalid ones and duplicates. One transaction.
+function bulkCreate(userId, rows) {
+  const db = getDb();
+  let added = 0, skipped = 0;
+  const errors = [];
+  const run = db.transaction(() => {
+    for (const r of rows) {
+      const name = typeof r.name === 'string' ? r.name.trim() : '';
+      const phone = typeof r.phone === 'string' || typeof r.phone === 'number' ? String(r.phone).trim() : '';
+      if (!name || !phone) { skipped++; continue; }
+      try {
+        create({
+          userId, name, phone,
+          email: typeof r.email === 'string' ? r.email : '',
+          tags: r.tags, notes: typeof r.notes === 'string' ? r.notes : '',
+        });
+        added++;
+      } catch (err) {
+        skipped++;
+        if (err.code !== 11000 && errors.length < 5) errors.push(err.message);
+      }
+    }
+  });
+  run();
+  return { added, skipped, errors };
+}
+
 function create(data) {
   const db = getDb();
   const id = newId();
@@ -81,4 +125,4 @@ function softDelete(id, userId) {
   return res.changes > 0;
 }
 
-module.exports = { listForUser, findActiveByPhone, countForUser, countAudience, create, update, softDelete, mapRow };
+module.exports = { listForUser, listAudience, listForExport, bulkCreate, findActiveByPhone, countForUser, countAudience, create, update, softDelete, mapRow };

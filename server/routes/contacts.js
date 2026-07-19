@@ -28,6 +28,49 @@ router.get('/', protect, (req, res) => {
   }
 });
 
+// POST /api/contacts/import — bulk rows [{name, phone, email?, tags?, notes?}]
+router.post('/import', protect, requireVerified, (req, res) => {
+  try {
+    const rows = req.body.contacts;
+    if (!Array.isArray(rows) || !rows.length) {
+      return res.status(400).json({ success: false, message: 'Send a "contacts" array with name and phone for each row.' });
+    }
+    if (rows.length > 500) {
+      return res.status(400).json({ success: false, message: 'Maximum 500 contacts per import request.' });
+    }
+    const result = contacts.bulkCreate(req.user._id, rows);
+    logAction(req, 'contact.import', { meta: { added: result.added, skipped: result.skipped } });
+    res.json({
+      success: true, added: result.added, skipped: result.skipped,
+      message: `Imported ${result.added} contact${result.added === 1 ? '' : 's'}${result.skipped ? `, skipped ${result.skipped} (duplicates or missing name/phone)` : ''}.`,
+    });
+  } catch (err) {
+    console.error('Import contacts error:', err.message);
+    res.status(500).json({ success: false, message: 'Import failed.' });
+  }
+});
+
+// GET /api/contacts/export — download all contacts as CSV
+router.get('/export', protect, (req, res) => {
+  try {
+    const list = contacts.listForExport(req.user._id);
+    const csvCell = v => {
+      const s = String(v == null ? '' : v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const lines = ['name,phone,email,tags,status,notes'];
+    for (const c of list) {
+      lines.push([c.name, c.phone, c.email, (c.tags || []).join('|'), c.status, c.notes].map(csvCell).join(','));
+    }
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="contacts.csv"');
+    res.send(lines.join('\n'));
+  } catch (err) {
+    console.error('Export contacts error:', err.message);
+    res.status(500).json({ success: false, message: 'Export failed.' });
+  }
+});
+
 // POST /api/contacts
 router.post('/', protect, requireVerified, (req, res) => {
   try {

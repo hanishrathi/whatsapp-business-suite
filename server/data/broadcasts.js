@@ -9,6 +9,7 @@ function mapRow(row) {
     message: row.message || '', audienceTag: row.audienceTag, audienceCount: row.audienceCount,
     status: row.status, scheduledAt: toDate(row.scheduledAt),
     sentCount: row.sentCount, deliveredCount: row.deliveredCount, readCount: row.readCount,
+    failedCount: row.failedCount || 0,
     isActive: toBool(row.isActive),
     createdAt: toDate(row.createdAt), updatedAt: toDate(row.updatedAt),
   };
@@ -17,6 +18,21 @@ function mapRow(row) {
 function listForUser(userId) {
   return getDb().prepare('SELECT * FROM broadcasts WHERE userId = ? AND isActive = 1 ORDER BY createdAt DESC')
     .all(userId).map(mapRow);
+}
+function findForUser(id, userId) {
+  return mapRow(getDb().prepare('SELECT * FROM broadcasts WHERE id = ? AND userId = ? AND isActive = 1').get(id, userId));
+}
+// Scheduled broadcasts whose time has come (across all users — used by the scheduler).
+function listDue() {
+  return getDb().prepare(`SELECT * FROM broadcasts WHERE status = 'scheduled' AND isActive = 1 AND scheduledAt IS NOT NULL AND scheduledAt <= ?`)
+    .all(Date.now()).map(mapRow);
+}
+// Atomically claim a broadcast for sending; returns true if this caller won the claim.
+function claimForSending(id, userId) {
+  const res = getDb().prepare(
+    `UPDATE broadcasts SET status = 'sending', updatedAt = ? WHERE id = ? AND userId = ? AND isActive = 1 AND status IN ('draft','scheduled','failed')`)
+    .run(now(), id, userId);
+  return res.changes === 1;
 }
 function countForUser(userId) {
   return getDb().prepare('SELECT COUNT(*) c FROM broadcasts WHERE userId = ? AND isActive = 1').get(userId).c;
@@ -56,4 +72,4 @@ function softDelete(id, userId) {
   return res.changes > 0;
 }
 
-module.exports = { listForUser, countForUser, create, update, softDelete, mapRow };
+module.exports = { listForUser, findForUser, listDue, claimForSending, countForUser, create, update, softDelete, mapRow };

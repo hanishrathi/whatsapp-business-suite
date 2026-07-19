@@ -229,6 +229,10 @@ const API = {
     return this.request(`/accounts/${id}`, { method: 'DELETE' });
   },
 
+  async testWAAccount(id) {
+    return this.request(`/accounts/${id}/test`, { method: 'POST', body: '{}' });
+  },
+
   // ========== CONTACTS ==========
   async getContacts(q) {
     return this.request('/contacts' + (q ? `?q=${encodeURIComponent(q)}` : ''));
@@ -241,6 +245,25 @@ const API = {
   },
   async deleteContact(id) {
     return this.request(`/contacts/${id}`, { method: 'DELETE' });
+  },
+  async importContacts(rows) {
+    return this.request('/contacts/import', { method: 'POST', body: JSON.stringify({ contacts: rows }) });
+  },
+  async exportContactsCsv() {
+    // Download with the auth header, then trigger a save dialog.
+    const res = await fetch(`${this.baseUrl}/contacts/export`, {
+      headers: { 'Authorization': `Bearer ${this.getToken()}` },
+    });
+    if (!res.ok) return { success: false, message: 'Export failed.' };
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'contacts.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(a.href);
+    return { success: true };
   },
 
   // ========== TEMPLATES ==========
@@ -269,6 +292,17 @@ const API = {
   },
   async deleteBroadcast(id) {
     return this.request(`/broadcasts/${id}`, { method: 'DELETE' });
+  },
+  async getBroadcast(id) {
+    return this.request(`/broadcasts/${id}`);
+  },
+  async sendBroadcast(id) {
+    return this.request(`/broadcasts/${id}/send`, { method: 'POST', body: '{}' });
+  },
+
+  // ========== DASHBOARD ==========
+  async getDashboardStats() {
+    return this.request('/dashboard/stats');
   },
 };
 

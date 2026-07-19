@@ -13,7 +13,7 @@
       'New Conversation': () => go('conversations'),
       'Send Broadcast':   () => go('broadcasts', () => clickById('newBroadcastBtn')),
       'Create Template':  () => go('templates', () => clickById('newTemplateBtn')),
-      'Import Contacts':  () => go('contacts', () => clickById('newContactBtn')),
+      'Import Contacts':  () => go('contacts', () => clickById('importContactsBtn')),
       'API Documentation':() => go('api'),
       'Export Reports':   () => go('reports'),
     };

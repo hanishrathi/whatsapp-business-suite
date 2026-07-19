@@ -3,9 +3,9 @@
   "configurations": [
     {
       "name": "whatsapp-dashboard",
-      "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "4175", "-d", "/Users/dehanishrathi/claud/acquihiretech/products/whatsapp-dashboard"],
-      "port": 4175,
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["server/server.js"],
+      "port": 4176,
       "autoPort": false
     }
   ]
