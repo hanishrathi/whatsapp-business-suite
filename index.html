@@ -635,10 +635,10 @@
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
           </div>
           <div class="stat-body">
-            <span class="stat-value">0.8%</span>
+            <span class="stat-value" id="statOptOutRate">—</span>
             <span class="stat-label">Opt-out Rate</span>
           </div>
-          <span class="stat-change down">-0.3%</span>
+          <span class="stat-change" id="statOptOutNote"></span>
         </div>
       </div>
 
@@ -660,42 +660,9 @@
           <div class="card-header">
             <h3>Top Performing Templates</h3>
           </div>
-          <div class="template-perf">
-            <div class="template-perf-item">
-              <div class="template-perf-info">
-                <span class="template-perf-name">welcome_message</span>
-                <span class="template-perf-stat">82% open rate</span>
-              </div>
-              <div class="mini-bar"><div class="mini-bar-fill" style="width:82%;background:#25D366"></div></div>
-            </div>
-            <div class="template-perf-item">
-              <div class="template-perf-info">
-                <span class="template-perf-name">order_confirmation</span>
-                <span class="template-perf-stat">76% open rate</span>
-              </div>
-              <div class="mini-bar"><div class="mini-bar-fill" style="width:76%;background:#34B7F1"></div></div>
-            </div>
-            <div class="template-perf-item">
-              <div class="template-perf-info">
-                <span class="template-perf-name">feedback_request</span>
-                <span class="template-perf-stat">71% open rate</span>
-              </div>
-              <div class="mini-bar"><div class="mini-bar-fill" style="width:71%;background:#9B59B6"></div></div>
-            </div>
-            <div class="template-perf-item">
-              <div class="template-perf-info">
-                <span class="template-perf-name">appointment_reminder</span>
-                <span class="template-perf-stat">69% open rate</span>
-              </div>
-              <div class="mini-bar"><div class="mini-bar-fill" style="width:69%;background:#FFC107"></div></div>
-            </div>
-            <div class="template-perf-item">
-              <div class="template-perf-info">
-                <span class="template-perf-name">promo_offer</span>
-                <span class="template-perf-stat">58% open rate</span>
-              </div>
-              <div class="mini-bar"><div class="mini-bar-fill" style="width:58%;background:#FF6B6B"></div></div>
-            </div>
+          <!-- Filled from /api/dashboard/stats — real read rates, last 30 days. -->
+          <div class="template-perf" id="templatePerf">
+            <div style="padding:24px 8px;text-align:center;color:#86868b;font-size:13px;">Loading…</div>
           </div>
         </div>
       </div>
@@ -713,10 +680,17 @@
             <input type="file" id="csvFileInput" accept=".csv,text/csv" style="display:none">
           </div>
         </div>
+        <!-- Shown only when contacts predate consent tracking. -->
+        <div id="consentBackfillBanner" style="display:none;margin:0 24px 12px;padding:12px 16px;background:#FFF8E6;border:1px solid #FFE08A;border-radius:12px;font-size:13px;line-height:1.6;color:#6b5700;">
+          <strong id="consentBackfillCount"></strong>
+          have no recorded opt-in, so broadcasts will not reach them. WhatsApp requires demonstrable
+          consent before a business messages someone.
+          <button class="btn btn-sm" id="consentBackfillBtn" style="margin-left:8px;">Record consent for these</button>
+        </div>
         <div style="overflow-x:auto;">
           <table class="data-table">
             <thead>
-              <tr><th>Name</th><th>Phone</th><th>Email</th><th>Tags</th><th>Status</th><th></th></tr>
+              <tr><th>Name</th><th>Phone</th><th>Email</th><th>Tags</th><th>Consent</th><th></th></tr>
             </thead>
             <tbody id="contactsTableBody">
               <tr><td colspan="6" style="text-align:center;padding:30px;color:#86868b;">Loading…</td></tr>
@@ -731,8 +705,15 @@
       <div class="card">
         <div class="card-header">
           <h3>Message Templates</h3>
-          <button class="btn btn-sm" id="newTemplateBtn">+ New Template</button>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-sm btn-secondary" data-sync-templates="1">Sync from Meta</button>
+            <button class="btn btn-sm" id="newTemplateBtn">+ New Template</button>
+          </div>
         </div>
+        <p style="margin:0 24px 4px;font-size:12px;color:#86868b;line-height:1.5;">
+          Templates are created and approved in Meta Business Manager. Only APPROVED templates can be
+          sent to contacts who have not messaged you in the last 24 hours. Sync to pull their current status.
+        </p>
         <div style="overflow-x:auto;">
           <table class="data-table">
             <thead>
@@ -876,6 +857,18 @@
             </div>
 
             <div class="modal-step-content active" id="step1">
+              <div class="form-group">
+                <label class="form-label">Channel Type</label>
+                <select class="form-select full" id="newAccountChannelType">
+                  <option value="cloud_api">WhatsApp Business Platform (Cloud API) — this app sends automatically</option>
+                  <option value="manual">WhatsApp Business app or regular WhatsApp — you send from your phone</option>
+                </select>
+                <small style="color:#86868b;font-size:12px;line-height:1.5;display:block;margin-top:6px;" id="channelTypeHint">
+                  A number registered to the Cloud API is removed from the WhatsApp Business app and regular
+                  WhatsApp — one number can only be on one of them. Meta publishes no API for the apps, so
+                  manual channels get contact management and ready-made chat links instead of automated sending.
+                </small>
+              </div>
               <div class="form-group">
                 <label class="form-label">Account Name</label>
                 <input type="text" class="form-input" id="newAccountName" placeholder="e.g. Sales Team, Support Line…">

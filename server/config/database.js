@@ -186,8 +186,69 @@ function createSchema() {
     CREATE INDEX IF NOT EXISTS ix_audit_action ON audit_logs(action);
   `);
 
-  // Additive migrations for databases created before these columns existed.
-  try { db.exec(`ALTER TABLE broadcasts ADD COLUMN failedCount INTEGER DEFAULT 0`); } catch { /* already there */ }
+  runMigrations();
+}
+
+/*
+ * Additive migrations. Every entry is `ALTER TABLE ... ADD COLUMN` with a
+ * constant default, so re-running on an existing database is a no-op (SQLite
+ * throws "duplicate column name", which we swallow). Never reorder or remove
+ * entries — only append.
+ */
+const MIGRATIONS = [
+  // Pre-existing.
+  `ALTER TABLE broadcasts ADD COLUMN failedCount INTEGER DEFAULT 0`,
+
+  // Consent: WhatsApp requires demonstrable opt-in before any business-initiated
+  // message, and requires opt-out requests to be honoured.
+  `ALTER TABLE contacts ADD COLUMN optInAt INTEGER`,
+  `ALTER TABLE contacts ADD COLUMN optInSource TEXT DEFAULT ''`,
+  `ALTER TABLE contacts ADD COLUMN optOutAt INTEGER`,
+  `ALTER TABLE contacts ADD COLUMN optOutReason TEXT DEFAULT ''`,
+  // Last inbound message from this contact — opens the 24h customer service window.
+  `ALTER TABLE contacts ADD COLUMN lastInboundAt INTEGER`,
+
+  // Channel model: 'cloud_api' accounts send through the WhatsApp Business
+  // Platform; 'manual' accounts are WhatsApp Business app / regular WhatsApp
+  // numbers that this app can only hand off to via click-to-chat.
+  `ALTER TABLE whatsapp_accounts ADD COLUMN channelType TEXT DEFAULT 'cloud_api'`,
+  // Messaging tier: unique recipients allowed per rolling 24h for
+  // business-initiated conversations (250 / 1K / 10K / 100K / unlimited).
+  `ALTER TABLE whatsapp_accounts ADD COLUMN messagingLimit INTEGER DEFAULT 250`,
+  `ALTER TABLE whatsapp_accounts ADD COLUMN messagingLimitCheckedAt INTEGER`,
+
+  // Templates are owned by Meta, not by us. These mirror the WABA record.
+  `ALTER TABLE templates ADD COLUMN metaId TEXT DEFAULT ''`,
+  `ALTER TABLE templates ADD COLUMN metaStatus TEXT DEFAULT ''`,
+  `ALTER TABLE templates ADD COLUMN rejectedReason TEXT DEFAULT ''`,
+  `ALTER TABLE templates ADD COLUMN components TEXT DEFAULT '[]'`,
+  `ALTER TABLE templates ADD COLUMN syncedAt INTEGER`,
+  `ALTER TABLE templates ADD COLUMN accountId TEXT`,
+
+  // Per-recipient Meta error code, so failures can be triaged and retried sanely.
+  `ALTER TABLE broadcast_messages ADD COLUMN errorCode INTEGER`,
+];
+
+function runMigrations() {
+  for (const sql of MIGRATIONS) {
+    try {
+      db.exec(sql);
+    } catch (err) {
+      // "duplicate column name" means the migration already ran — anything else is real.
+      if (!/duplicate column name/i.test(err.message)) throw err;
+    }
+  }
+  db.exec(`CREATE INDEX IF NOT EXISTS ix_contacts_optin ON contacts(userId, optInAt)`);
+  // A WABA template is keyed by name+language, so duplicates are meaningless.
+  // On a legacy database that already has duplicates this index can't be built;
+  // warn rather than refusing to boot.
+  try {
+    db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS uq_templates_user_name_lang
+             ON templates(userId, name, language) WHERE isActive = 1`);
+  } catch (err) {
+    console.warn('Could not add unique template index (duplicate name+language rows exist). ' +
+                 'De-duplicate your templates to enable it.');
+  }
 }
 
 module.exports = { init, getDb, newId };

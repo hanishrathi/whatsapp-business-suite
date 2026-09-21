@@ -68,7 +68,8 @@ async function sendWhatsAppOTP(phone, otp) {
     return;
   }
 
-  const url = `https://graph.facebook.com/v19.0/${phoneNumberId}/messages`;
+  const graphVersion = process.env.WA_GRAPH_VERSION || 'v23.0';
+  const url = `https://graph.facebook.com/${graphVersion}/${phoneNumberId}/messages`;
 
   // Clean phone number (remove spaces, dashes)
   const cleanPhone = phone.replace(/[\s\-\(\)]/g, '');

@@ -19,9 +19,9 @@ function createPending(broadcastId, userId, contact) {
   return id;
 }
 
-function markResult(id, { wamid, status, error }) {
-  getDb().prepare('UPDATE broadcast_messages SET wamid = ?, status = ?, error = ?, updatedAt = ? WHERE id = ?')
-    .run(wamid || null, status, error || null, now(), id);
+function markResult(id, { wamid, status, error, errorCode }) {
+  getDb().prepare('UPDATE broadcast_messages SET wamid = ?, status = ?, error = ?, errorCode = ?, updatedAt = ? WHERE id = ?')
+    .run(wamid || null, status, error || null, errorCode == null ? null : errorCode, now(), id);
 }
 
 // Webhook path: advance status by WhatsApp message id. Returns the row (for broadcastId) or null.
@@ -106,4 +106,52 @@ function statsForUser(userId) {
   return { messagesToday, monthTotal, deliveryRate, breakdown, series };
 }
 
-module.exports = { createPending, markResult, advanceStatusByWamid, countsForBroadcast, syncBroadcastCounters, statsForUser };
+/*
+ * Real per-template performance over the last 30 days: read rate among the
+ * messages that were actually delivered. Only templates this user has sent
+ * appear — no placeholder rows.
+ */
+function templatePerformanceForUser(userId, limit = 5) {
+  const rows = getDb().prepare(`
+    SELECT t.name AS name,
+           COUNT(*) AS attempted,
+           SUM(CASE WHEN bm.status IN ('delivered','read') THEN 1 ELSE 0 END) AS delivered,
+           SUM(CASE WHEN bm.status = 'read' THEN 1 ELSE 0 END) AS read
+      FROM broadcast_messages bm
+      JOIN broadcasts b ON b.id = bm.broadcastId
+      JOIN templates  t ON t.id = b.templateId
+     WHERE bm.userId = ? AND bm.createdAt >= ?
+     GROUP BY t.name
+     HAVING attempted > 0
+     ORDER BY read DESC, attempted DESC
+     LIMIT ?`).all(userId, startOfDay(29), limit);
+
+  return rows.map(r => ({
+    name: r.name,
+    attempted: r.attempted,
+    delivered: r.delivered,
+    read: r.read,
+    // Read rate is only meaningful against what actually arrived.
+    readRate: r.delivered ? Math.round((r.read / r.delivered) * 1000) / 10 : 0,
+  }));
+}
+
+// Opt-out rate over the whole contact list — a core WhatsApp quality signal.
+function consentStatsForUser(userId) {
+  const db = getDb();
+  const total = db.prepare('SELECT COUNT(*) c FROM contacts WHERE userId = ? AND isActive = 1').get(userId).c;
+  const optedIn = db.prepare(
+    'SELECT COUNT(*) c FROM contacts WHERE userId = ? AND isActive = 1 AND optInAt IS NOT NULL AND optOutAt IS NULL').get(userId).c;
+  const optedOut = db.prepare(
+    'SELECT COUNT(*) c FROM contacts WHERE userId = ? AND isActive = 1 AND optOutAt IS NOT NULL').get(userId).c;
+  return {
+    total, optedIn, optedOut,
+    noConsent: total - optedIn - optedOut,
+    optOutRate: total ? Math.round((optedOut / total) * 1000) / 10 : 0,
+  };
+}
+
+module.exports = {
+  createPending, markResult, advanceStatusByWamid, countsForBroadcast,
+  syncBroadcastCounters, statsForUser, templatePerformanceForUser, consentStatsForUser,
+};

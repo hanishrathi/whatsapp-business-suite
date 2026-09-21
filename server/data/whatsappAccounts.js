@@ -1,8 +1,22 @@
 const { getDb, newId } = require('../config/database');
 const { toBool, fromBool, toDate, fromDate, now } = require('./_map');
 
+/*
+ * Two channel types share this table:
+ *
+ *  'cloud_api' — a number registered to the WhatsApp Business Platform. The app
+ *                sends through it automatically. Such a number CANNOT also be
+ *                used in the WhatsApp Business app or regular WhatsApp.
+ *  'manual'    — a WhatsApp Business app or regular WhatsApp number. Meta
+ *                publishes no API for these, so the app manages contacts and
+ *                message text and hands off via click-to-chat. Automated
+ *                sending is refused for this type.
+ */
+const CHANNEL_TYPES = ['cloud_api', 'manual'];
+
 function mapRow(row, includeToken = false) {
   if (!row) return null;
+  const channelType = CHANNEL_TYPES.includes(row.channelType) ? row.channelType : 'cloud_api';
   const o = {
     _id: row.id, id: row.id, userId: row.userId,
     name: row.name, phone: row.phone, countryCode: row.countryCode,
@@ -14,6 +28,11 @@ function mapRow(row, includeToken = false) {
     deliveryRate: row.deliveryRate, messagesThisMonth: row.messagesThisMonth,
     isVerified: toBool(row.isVerified), verifiedAt: toDate(row.verifiedAt),
     isActive: toBool(row.isActive),
+    channelType,
+    // Only Cloud API numbers can be automated.
+    canAutoSend: channelType === 'cloud_api',
+    messagingLimit: row.messagingLimit == null ? 250 : row.messagingLimit,
+    messagingLimitCheckedAt: toDate(row.messagingLimitCheckedAt),
     createdAt: toDate(row.createdAt), updatedAt: toDate(row.updatedAt),
   };
   if (includeToken) o.accessToken = row.accessToken || '';
@@ -31,11 +50,23 @@ function findForUser(id, userId) {
 function findForUserWithToken(id, userId) {
   return mapRow(getDb().prepare('SELECT * FROM whatsapp_accounts WHERE id = ? AND userId = ? AND isActive = 1').get(id, userId), true);
 }
-// First account that has API credentials — the default sender.
+// First Cloud API account with credentials — the default automated sender.
+// Manual (Business app / regular WhatsApp) accounts are never picked here.
 function firstSendableForUser(userId) {
   return mapRow(getDb().prepare(
-    `SELECT * FROM whatsapp_accounts WHERE userId = ? AND isActive = 1 AND phoneNumberId != '' AND accessToken != '' ORDER BY createdAt LIMIT 1`)
+    `SELECT * FROM whatsapp_accounts WHERE userId = ? AND isActive = 1
+     AND COALESCE(channelType,'cloud_api') = 'cloud_api'
+     AND phoneNumberId != '' AND accessToken != '' ORDER BY createdAt LIMIT 1`)
     .get(userId), true);
+}
+
+// Resolve the account a webhook belongs to, by the business phone number id
+// Meta reports in the payload. Used to attribute inbound messages to a user.
+function findByPhoneNumberId(phoneNumberId) {
+  if (!phoneNumberId) return null;
+  return mapRow(getDb().prepare(
+    `SELECT * FROM whatsapp_accounts WHERE phoneNumberId = ? AND isActive = 1 LIMIT 1`)
+    .get(String(phoneNumberId)));
 }
 function findActiveByPhone(userId, phone) {
   return mapRow(getDb().prepare('SELECT * FROM whatsapp_accounts WHERE userId = ? AND phone = ? AND isActive = 1').get(userId, phone));
@@ -48,14 +79,15 @@ function create(data) {
   const db = getDb();
   const id = newId();
   const ts = now();
+  const channelType = CHANNEL_TYPES.includes(data.channelType) ? data.channelType : 'cloud_api';
   db.prepare(`INSERT INTO whatsapp_accounts
-    (id,userId,name,phone,countryCode,category,categoryLabel,color,colorClass,wabaId,phoneNumberId,accessToken,status,isVerified,createdAt,updatedAt)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+    (id,userId,name,phone,countryCode,category,categoryLabel,color,colorClass,wabaId,phoneNumberId,accessToken,status,isVerified,channelType,createdAt,updatedAt)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
     id, data.userId, data.name, data.phone, data.countryCode || '+91',
     data.category || 'general', data.categoryLabel || 'General',
     data.color || '#25D366', data.colorClass || 'green',
     data.wabaId || '', data.phoneNumberId || '', data.accessToken || '',
-    data.status || 'offline', fromBool(data.isVerified), ts, ts);
+    data.status || 'offline', fromBool(data.isVerified), channelType, ts, ts);
   // returns object WITH token for internal use; route strips it before responding
   return mapRow(db.prepare('SELECT * FROM whatsapp_accounts WHERE id = ?').get(id), true);
 }
@@ -65,7 +97,7 @@ function update(id, userId, fields) {
   const allowed = {};
   for (const [k, v] of Object.entries(fields)) {
     if (k === 'isVerified') allowed[k] = fromBool(v);
-    else if (k === 'verifiedAt') allowed[k] = fromDate(v);
+    else if (k === 'verifiedAt' || k === 'messagingLimitCheckedAt') allowed[k] = fromDate(v);
     else allowed[k] = v;
   }
   const cols = Object.keys(allowed);
@@ -89,4 +121,9 @@ function deleteAllForUser(userId) {
   getDb().prepare('DELETE FROM whatsapp_accounts WHERE userId = ?').run(userId);
 }
 
-module.exports = { listForUser, findForUser, findForUserWithToken, firstSendableForUser, findActiveByPhone, countActiveForUser, create, update, softDelete, deleteAllForUser, mapRow };
+module.exports = {
+  listForUser, findForUser, findForUserWithToken, firstSendableForUser,
+  findActiveByPhone, findByPhoneNumberId, countActiveForUser,
+  create, update, softDelete, deleteAllForUser, mapRow,
+  CHANNEL_TYPES,
+};

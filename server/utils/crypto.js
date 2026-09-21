@@ -35,9 +35,23 @@ function encrypt(plaintext) {
 // Decrypt a stored string -> plaintext. Returns '' for empty input.
 function decrypt(stored) {
   if (!stored) return '';
-  // If it doesn't look like our format, assume legacy plaintext and return as-is.
   const parts = String(stored).split(':');
-  if (parts.length !== 3) return stored;
+  /*
+   * Anything not in <iv>:<tag>:<ciphertext> form was written before secrets
+   * were encrypted at rest. Returning it verbatim keeps those rows working,
+   * but it is a real finding — the value is sitting in the database in the
+   * clear — so say so loudly instead of silently passing it through.
+   * Re-saving the account re-encrypts it.
+   */
+  if (parts.length !== 3) {
+    console.warn('SECURITY: found an unencrypted secret in the database. ' +
+                 'Re-save the affected WhatsApp account to encrypt it at rest.');
+    return stored;
+  }
+  // Reject a malformed value rather than handing garbage to the API.
+  if (!/^[0-9a-f]+$/i.test(parts[0]) || !/^[0-9a-f]+$/i.test(parts[1])) {
+    throw new Error('Stored secret is malformed (not a valid encrypted value).');
+  }
   try {
     const key = getKey();
     const [ivHex, tagHex, dataHex] = parts;

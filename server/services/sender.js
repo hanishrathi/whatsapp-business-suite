@@ -7,13 +7,28 @@ const wa = require('../utils/whatsapp');
 
 /*
  * Broadcast send engine.
- * - sendNow() validates + atomically claims the broadcast, then delivers to the
- *   whole audience with pacing (Meta rate limits) and per-recipient tracking.
- * - startScheduler() fires due scheduled broadcasts every 30s while the app runs.
+ *
+ * WhatsApp rules this enforces, in order:
+ *  1. A business-initiated message MUST be an APPROVED template. Free-form text
+ *     is only legal inside a 24-hour customer service window opened by the
+ *     contact's own inbound message.
+ *  2. Every recipient must have recorded opt-in and no opt-out. Enforced in the
+ *     audience query (data/contacts.js), re-checked per recipient here.
+ *  3. Sending must stay inside the number's messaging tier (unique recipients
+ *     per rolling 24h) and inside Cloud API throughput.
+ *  4. Rate-limit errors get exponential backoff; ecosystem/template/token
+ *     errors abort the run instead of burning the whole audience.
+ *
  * Single Node process (cPanel/Passenger) — no queues needed at this scale.
  */
 
-const PACE_MS = process.env.NODE_ENV === 'test' ? 1 : 150; // ~6 msgs/sec
+// Cloud API accepts ~80 msg/s on standard tiers; 150ms (~6.7/s) leaves ample
+// headroom and keeps a long broadcast from looking like a burst.
+const PACE_MS = process.env.NODE_ENV === 'test' ? 1 : 150;
+const MAX_RETRIES = 3;
+const BACKOFF_BASE_MS = process.env.NODE_ENV === 'test' ? 1 : 1000;
+const BACKOFF_CAP_MS = process.env.NODE_ENV === 'test' ? 4 : 60000;
+
 const inFlight = new Set(); // broadcast ids being sent by THIS process
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -25,32 +40,74 @@ function personalize(text, contact) {
     .replace(/\{\{\s*1\s*\}\}/g, contact.name);
 }
 
-async function runBroadcast(b, account, audience, messageText, template) {
-  let sent = 0, failed = 0;
+/*
+ * Values for a template's positional variables, for one contact.
+ * {{1}} is the contact name by convention; later slots fall back to empty
+ * strings, which Meta accepts as long as the count matches.
+ */
+function valuesFor(contact) {
+  return { 1: contact.name };
+}
+
+/*
+ * Send one message with retry/backoff on transient rate limits.
+ * Returns the final result plus how many attempts it took.
+ */
+async function sendWithRetry(fn) {
+  let attempt = 0;
+  for (;;) {
+    const result = await fn();
+    if (result.ok) return result;
+    const retryable = wa.isRetryable(result.code) || result.networkError;
+    if (!retryable || attempt >= MAX_RETRIES) return result;
+    // Exponential backoff: 1s, 2s, 4s … capped. Hammering a rate limit makes it worse.
+    const wait = Math.min(BACKOFF_BASE_MS * Math.pow(2, attempt), BACKOFF_CAP_MS);
+    await sleep(wait);
+    attempt++;
+  }
+}
+
+async function runBroadcast(b, account, audience, template) {
+  let sent = 0, failed = 0, skipped = 0;
+  let abortReason = null;
+
   try {
     for (const contact of audience) {
-      const rowId = bmsgs.createPending(b._id, b.userId, contact);
-      let result;
-      if (template) {
-        // Approved Meta template: name goes in as variable {{1}}.
-        const params = template.variableCount > 0 ? [contact.name] : [];
-        result = await wa.sendTemplate(account, contact.phone, template.name, template.language, params);
-      } else {
-        result = await wa.sendText(account, contact.phone, personalize(messageText, contact));
+      // Re-check consent at send time: a contact may have sent STOP while this
+      // broadcast was running.
+      const fresh = contacts.findActiveByPhone(b.userId, contact.phone) || contact;
+      if (!fresh.hasOptIn || fresh.status !== 'active') {
+        skipped++;
+        continue;
       }
+
+      const rowId = bmsgs.createPending(b._id, b.userId, contact);
+      const components = wa.buildTemplateComponents(template, valuesFor(contact));
+      const result = await sendWithRetry(() =>
+        wa.sendTemplate(account, contact.phone, template.name, template.language, components));
+
       if (result.ok) {
         sent++;
         bmsgs.markResult(rowId, { wamid: result.wamid, status: 'sent' });
       } else {
         failed++;
-        bmsgs.markResult(rowId, { status: 'failed', error: result.error });
+        bmsgs.markResult(rowId, { status: 'failed', error: result.error, errorCode: result.code });
+
+        // Some failures mean the rest of the audience will fail the same way —
+        // stop rather than burning thousands of messages and the account's quality.
+        if (wa.isFatalForRun(result.code)) {
+          abortReason = result.error;
+          break;
+        }
       }
+
       // Refresh progress counters every 10 messages so the UI can poll.
       if ((sent + failed) % 10 === 0) bmsgs.syncBroadcastCounters(b._id);
       if (audience.length > 1) await sleep(PACE_MS);
     }
   } catch (err) {
     console.error('Broadcast send crashed:', err.message);
+    abortReason = abortReason || err.message;
   } finally {
     inFlight.delete(b._id);
     bmsgs.syncBroadcastCounters(b._id);
@@ -58,16 +115,17 @@ async function runBroadcast(b, account, audience, messageText, template) {
     broadcasts.update(b._id, b.userId, { status: finalStatus });
     // Keep the sending account's lifetime counters honest.
     if (sent > 0) {
-      const fresh = waAccounts.findForUser(account._id, b.userId);
-      if (fresh) {
+      const freshAccount = waAccounts.findForUser(account._id, b.userId);
+      if (freshAccount) {
         waAccounts.update(account._id, b.userId, {
-          totalMessages: (fresh.totalMessages || 0) + sent,
-          messagesThisMonth: (fresh.messagesThisMonth || 0) + sent,
+          totalMessages: (freshAccount.totalMessages || 0) + sent,
+          messagesThisMonth: (freshAccount.messagesThisMonth || 0) + sent,
         });
       }
     }
+    if (abortReason) console.error(`Broadcast ${b._id} aborted: ${abortReason}`);
   }
-  return { sent, failed };
+  return { sent, failed, skipped, abortReason };
 }
 
 /*
@@ -81,37 +139,123 @@ function sendNow(broadcastId, userId) {
   if (b.status === 'sending' || inFlight.has(b._id)) return { error: 'This broadcast is already sending.', code: 'BUSY' };
   if (b.status === 'sent') return { error: 'This broadcast was already sent.', code: 'DONE' };
 
-  // Which account sends it? Explicit choice, else the first one with credentials.
+  // Which account sends it? Explicit choice, else the first Cloud API one.
   const account = b.accountId
     ? waAccounts.findForUserWithToken(b.accountId, userId)
     : waAccounts.firstSendableForUser(userId);
-  if (!account || !wa.credsFor(account)) {
+
+  if (!account) {
     return {
       error: 'No WhatsApp account with API credentials. Open Accounts, add your Phone Number ID and Access Token from Meta Business Manager, then use "Test Connection".',
       code: 'NO_ACCOUNT',
     };
   }
-
-  // What gets sent?
-  let template = null;
-  if (b.templateId) {
-    template = templates.findForUser(b.templateId, userId);
-    if (!template) return { error: 'The template attached to this broadcast no longer exists.', code: 'NO_TEMPLATE' };
+  // Manual channels have no API — they are handed off via click-to-chat instead.
+  if (account.channelType === 'manual') {
+    return {
+      error: `"${account.name}" is a WhatsApp Business app / regular WhatsApp number. Meta publishes no API for those, so this app cannot send from it automatically. Use "Open in WhatsApp" on the broadcast to send it yourself, or pick a Cloud API account.`,
+      code: 'MANUAL_CHANNEL',
+    };
   }
-  const messageText = b.message;
-  if (!template && !messageText) return { error: 'Broadcast has no message or template.', code: 'NO_MESSAGE' };
+  if (!wa.credsFor(account)) {
+    return {
+      error: `"${account.name}" has no working API credentials. Add its Phone Number ID and Access Token, then use "Test Connection".`,
+      code: 'NO_ACCOUNT',
+    };
+  }
 
-  // Who receives it?
+  /*
+   * A broadcast is business-initiated by definition, so it MUST use an
+   * approved template. Free-form text is only legal as a reply inside an open
+   * 24h customer service window, which is a per-conversation thing, not a
+   * broadcast.
+   */
+  if (!b.templateId) {
+    return {
+      error: 'A broadcast must use an approved WhatsApp template. Free-form text can only be sent as a reply within 24 hours of a customer messaging you. Attach a template to this broadcast.',
+      code: 'TEMPLATE_REQUIRED',
+    };
+  }
+  const template = templates.findForUser(b.templateId, userId);
+  if (!template) return { error: 'The template attached to this broadcast no longer exists.', code: 'NO_TEMPLATE' };
+  if (!template.isSendable) {
+    return {
+      error: `Template "${template.name}" is not approved by Meta (status: ${template.metaStatus || 'not synced'}). Only APPROVED templates can be sent. Sync templates on the Accounts page, or submit this one in Meta Business Manager.`,
+      code: 'TEMPLATE_NOT_APPROVED',
+    };
+  }
+
+  // Who receives it? The audience query already excludes anyone without opt-in.
   const audience = contacts.listAudience(userId, b.audienceTag);
-  if (!audience.length) return { error: 'No active contacts match this audience. Add contacts (or check the audience tag) first.', code: 'NO_AUDIENCE' };
+  if (!audience.length) {
+    const excluded = contacts.countExcludedFromAudience(userId, b.audienceTag);
+    return {
+      error: excluded
+        ? `No contacts in this audience have recorded opt-in. ${excluded} contact${excluded === 1 ? ' was' : 's were'} excluded for missing consent, opt-out, or inactive status. WhatsApp requires opt-in before business-initiated messages.`
+        : 'No active contacts match this audience. Add contacts (or check the audience tag) first.',
+      code: 'NO_AUDIENCE',
+    };
+  }
+
+  /*
+   * Messaging tier: a number may only start business-initiated conversations
+   * with N unique recipients per rolling 24 hours. Going over burns messages
+   * and hurts quality, so refuse rather than fail thousands of sends.
+   */
+  const limit = account.messagingLimit || 250;
+  if (audience.length > limit) {
+    return {
+      error: `This audience is ${audience.length} contacts but "${account.name}" is on a ${limit.toLocaleString()}-recipient/24h messaging tier. Narrow the audience with a tag, or split it across days. Meta raises the tier automatically as you send consistently at good quality.`,
+      code: 'OVER_TIER_LIMIT',
+      audienceCount: audience.length,
+      messagingLimit: limit,
+    };
+  }
 
   // Atomic claim so two clicks / scheduler+click can't double-send.
   if (!broadcasts.claimForSending(b._id, userId)) return { error: 'This broadcast is already sending.', code: 'BUSY' };
   inFlight.add(b._id);
   broadcasts.update(b._id, userId, { audienceCount: audience.length });
 
-  const promise = runBroadcast(b, account, audience, messageText, template);
+  const promise = runBroadcast(b, account, audience, template);
   return { started: true, audienceCount: audience.length, promise };
+}
+
+/* ---------- click-to-chat handoff (manual channels) ---------- */
+
+/*
+ * Manual channels can't be automated, so the app produces a ready-to-send
+ * click-to-chat link per recipient. The operator opens each one in their own
+ * WhatsApp Business app or regular WhatsApp and presses send.
+ *
+ * Opt-in is still required — the obligation is the business's regardless of
+ * which app the message is typed in.
+ */
+function buildHandoffLinks(broadcastId, userId) {
+  const b = broadcasts.findForUser(broadcastId, userId);
+  if (!b) return { error: 'Broadcast not found.', code: 'NOT_FOUND' };
+
+  let text = b.message;
+  if (b.templateId) {
+    const template = templates.findForUser(b.templateId, userId);
+    if (template) text = template.body;
+  }
+  if (!text) return { error: 'This broadcast has no message text to hand off.', code: 'NO_MESSAGE' };
+
+  const audience = contacts.listAudience(userId, b.audienceTag);
+  if (!audience.length) {
+    return { error: 'No contacts in this audience have recorded opt-in.', code: 'NO_AUDIENCE' };
+  }
+
+  return {
+    ok: true,
+    links: audience.map(c => ({
+      contactId: c._id,
+      name: c.name,
+      phone: c.phone,
+      url: wa.clickToChatUrl(c.phone, personalize(text, c)),
+    })),
+  };
 }
 
 /* ---------- scheduler ---------- */
@@ -163,4 +307,6 @@ function stopScheduler() {
   if (timer) { clearInterval(timer); timer = null; }
 }
 
-module.exports = { sendNow, startScheduler, stopScheduler, tick, personalize };
+module.exports = {
+  sendNow, buildHandoffLinks, startScheduler, stopScheduler, tick, personalize,
+};

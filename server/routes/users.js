@@ -4,7 +4,7 @@ const multer = require('multer');
 const sharp = require('sharp');
 const path = require('path');
 const fs = require('fs');
-const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
 const users = require('../data/users');
 const waAccounts = require('../data/whatsappAccounts');
 const { protect, signToken } = require('../middleware/auth');
@@ -69,7 +69,8 @@ router.put('/profile', protect, (req, res) => {
 router.post('/avatar', protect, upload.single('avatar'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ success: false, message: 'No image file provided.' });
-    const filename = `${req.user._id}-${uuidv4()}.webp`;
+    // Node's own UUID — no third-party dependency needed for a filename.
+    const filename = `${req.user._id}-${crypto.randomUUID()}.webp`;
     const uploadDir = path.join(__dirname, '..', 'uploads', 'avatars');
     if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
     const filePath = path.join(uploadDir, filename);

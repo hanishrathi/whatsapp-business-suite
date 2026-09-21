@@ -1,14 +1,28 @@
 const { getDb, newId } = require('../config/database');
 const { toBool, toDate, toJson, fromJson, fromDate, now } = require('./_map');
 
+// A contact's inbound message opens a 24h customer service window, during
+// which free-form (non-template) replies are allowed.
+const SERVICE_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 function mapRow(row) {
   if (!row) return null;
+  const optInAt = toDate(row.optInAt);
+  const optOutAt = toDate(row.optOutAt);
+  const lastInboundAt = toDate(row.lastInboundAt);
   return {
     _id: row.id, id: row.id, userId: row.userId,
     name: row.name, phone: row.phone, email: row.email || '',
     tags: toJson(row.tags, []), notes: row.notes || '',
     accountId: row.accountId || null, status: row.status,
     lastContacted: toDate(row.lastContacted), isActive: toBool(row.isActive),
+    // Consent state — required before any business-initiated message.
+    optInAt, optInSource: row.optInSource || '',
+    optOutAt, optOutReason: row.optOutReason || '',
+    hasOptIn: !!optInAt && !optOutAt,
+    // Service window state.
+    lastInboundAt,
+    serviceWindowOpen: !!lastInboundAt && (Date.now() - lastInboundAt.getTime()) < SERVICE_WINDOW_MS,
     createdAt: toDate(row.createdAt), updatedAt: toDate(row.updatedAt),
   };
 }
@@ -27,16 +41,41 @@ function listForUser(userId, q) {
 function findActiveByPhone(userId, phone) {
   return mapRow(getDb().prepare('SELECT * FROM contacts WHERE userId = ? AND phone = ? AND isActive = 1').get(userId, phone));
 }
+
+/*
+ * Webhook path: Meta reports the sender as digits only ("919876543210") while
+ * stored contacts may be formatted ("+91 98765 43210"). Compare on digits.
+ * Scoped to one user, and capped, so a busy account can't scan unbounded rows.
+ */
+function findActiveByDigits(userId, digits) {
+  const target = String(digits || '').replace(/[^\d]/g, '');
+  if (!target) return null;
+  const rows = getDb().prepare('SELECT * FROM contacts WHERE userId = ? AND isActive = 1').all(userId);
+  const hit = rows.find(r => String(r.phone).replace(/[^\d]/g, '') === target);
+  return hit ? mapRow(hit) : null;
+}
 function countForUser(userId) {
   return getDb().prepare('SELECT COUNT(*) c FROM contacts WHERE userId = ? AND isActive = 1').get(userId).c;
 }
-// Count active contacts, optionally filtered by a tag (for broadcast audience).
+/*
+ * Broadcast audience.
+ *
+ * WhatsApp only permits business-initiated messages to people who have opted
+ * in, and requires opt-outs to be honoured. Both rules are enforced here, in
+ * the query, so there is no code path that can blast a non-consenting contact:
+ *   - optInAt must be set
+ *   - optOutAt must be null
+ *   - status must be 'active' (excludes inactive/blocked/unsubscribed)
+ */
+const AUDIENCE_WHERE =
+  `userId = ? AND isActive = 1 AND status = 'active' AND optInAt IS NOT NULL AND optOutAt IS NULL`;
+
 function countAudience(userId, tag) {
   const db = getDb();
   if (!tag || tag === 'all') {
-    return db.prepare(`SELECT COUNT(*) c FROM contacts WHERE userId = ? AND isActive = 1 AND status = 'active'`).get(userId).c;
+    return db.prepare(`SELECT COUNT(*) c FROM contacts WHERE ${AUDIENCE_WHERE}`).get(userId).c;
   }
-  return db.prepare(`SELECT COUNT(*) c FROM contacts WHERE userId = ? AND isActive = 1 AND status = 'active' AND tags LIKE ?`)
+  return db.prepare(`SELECT COUNT(*) c FROM contacts WHERE ${AUDIENCE_WHERE} AND tags LIKE ?`)
     .get(userId, `%"${tag}"%`).c;
 }
 
@@ -44,11 +83,76 @@ function countAudience(userId, tag) {
 function listAudience(userId, tag, limit = 5000) {
   const db = getDb();
   if (!tag || tag === 'all') {
-    return db.prepare(`SELECT * FROM contacts WHERE userId = ? AND isActive = 1 AND status = 'active' ORDER BY createdAt LIMIT ?`)
+    return db.prepare(`SELECT * FROM contacts WHERE ${AUDIENCE_WHERE} ORDER BY createdAt LIMIT ?`)
       .all(userId, limit).map(mapRow);
   }
-  return db.prepare(`SELECT * FROM contacts WHERE userId = ? AND isActive = 1 AND status = 'active' AND tags LIKE ? ORDER BY createdAt LIMIT ?`)
+  return db.prepare(`SELECT * FROM contacts WHERE ${AUDIENCE_WHERE} AND tags LIKE ? ORDER BY createdAt LIMIT ?`)
     .all(userId, `%"${tag}"%`, limit).map(mapRow);
+}
+
+/*
+ * How many contacts match the tag but are excluded for consent reasons — shown
+ * to the user before a send so the audience count is never silently smaller
+ * than they expect.
+ */
+function countExcludedFromAudience(userId, tag) {
+  const db = getDb();
+  const base = `userId = ? AND isActive = 1 AND (optInAt IS NULL OR optOutAt IS NOT NULL OR status != 'active')`;
+  if (!tag || tag === 'all') {
+    return db.prepare(`SELECT COUNT(*) c FROM contacts WHERE ${base}`).get(userId).c;
+  }
+  return db.prepare(`SELECT COUNT(*) c FROM contacts WHERE ${base} AND tags LIKE ?`)
+    .get(userId, `%"${tag}"%`).c;
+}
+
+/* ---------- consent + inbound tracking ---------- */
+
+// Record opt-in. `source` is free text describing HOW consent was obtained —
+// Meta expects businesses to be able to demonstrate this.
+function recordOptIn(id, userId, source) {
+  const res = getDb().prepare(
+    `UPDATE contacts SET optInAt = ?, optInSource = ?, optOutAt = NULL, optOutReason = '', updatedAt = ?
+     WHERE id = ? AND userId = ? AND isActive = 1`)
+    .run(now(), String(source || 'manual').slice(0, 200), now(), id, userId);
+  return res.changes > 0;
+}
+
+// Record opt-out and flip the contact to 'unsubscribed' so it leaves every audience.
+function recordOptOut(id, userId, reason) {
+  const res = getDb().prepare(
+    `UPDATE contacts SET optOutAt = ?, optOutReason = ?, status = 'unsubscribed', updatedAt = ?
+     WHERE id = ? AND userId = ? AND isActive = 1`)
+    .run(now(), String(reason || '').slice(0, 200), now(), id, userId);
+  return res.changes > 0;
+}
+
+/*
+ * Record opt-in for every contact that has none yet.
+ *
+ * This exists for the upgrade path: contacts added before consent was tracked
+ * have no opt-in record, so they would silently drop out of every audience.
+ * The caller must still state where that consent came from — it is a
+ * declaration about contacts they already had, not a way to skip the rule.
+ * Contacts who have opted OUT are never revived by this.
+ */
+function bulkRecordOptIn(userId, source) {
+  const res = getDb().prepare(
+    `UPDATE contacts SET optInAt = ?, optInSource = ?, updatedAt = ?
+     WHERE userId = ? AND isActive = 1 AND optInAt IS NULL AND optOutAt IS NULL`)
+    .run(now(), String(source || '').slice(0, 200), now(), userId);
+  return res.changes;
+}
+
+function countWithoutConsent(userId) {
+  return getDb().prepare(
+    `SELECT COUNT(*) c FROM contacts WHERE userId = ? AND isActive = 1 AND optInAt IS NULL AND optOutAt IS NULL`)
+    .get(userId).c;
+}
+
+// Webhook path: an inbound message opens/extends the 24h service window.
+function touchInbound(id, userId) {
+  getDb().prepare(`UPDATE contacts SET lastInboundAt = ?, updatedAt = ? WHERE id = ? AND userId = ? AND isActive = 1`)
+    .run(now(), now(), id, userId);
 }
 
 // All active contacts for CSV export (any status).
@@ -57,21 +161,32 @@ function listForExport(userId, limit = 20000) {
     .all(userId, limit).map(mapRow);
 }
 
-// Bulk import: inserts rows, skipping invalid ones and duplicates. One transaction.
-function bulkCreate(userId, rows) {
+/*
+ * Bulk import. One transaction; invalid rows and duplicates are skipped.
+ *
+ * `optInSource` applies to the whole file: the importer must declare where
+ * consent for this list came from. Rows imported without it land with no
+ * opt-in and are excluded from every broadcast audience until someone
+ * records consent for them.
+ */
+function bulkCreate(userId, rows, optInSource) {
   const db = getDb();
-  let added = 0, skipped = 0;
+  let added = 0, skipped = 0, invalidPhone = 0;
   const errors = [];
+  const { isValidE164 } = require('../utils/whatsapp');
   const run = db.transaction(() => {
     for (const r of rows) {
       const name = typeof r.name === 'string' ? r.name.trim() : '';
       const phone = typeof r.phone === 'string' || typeof r.phone === 'number' ? String(r.phone).trim() : '';
       if (!name || !phone) { skipped++; continue; }
+      // Reject numbers that can never be delivered rather than failing per-send later.
+      if (!isValidE164(phone)) { invalidPhone++; skipped++; continue; }
       try {
         create({
           userId, name, phone,
           email: typeof r.email === 'string' ? r.email : '',
           tags: r.tags, notes: typeof r.notes === 'string' ? r.notes : '',
+          optInSource,
         });
         added++;
       } catch (err) {
@@ -81,7 +196,7 @@ function bulkCreate(userId, rows) {
     }
   });
   run();
-  return { added, skipped, errors };
+  return { added, skipped, invalidPhone, errors };
 }
 
 function create(data) {
@@ -90,11 +205,15 @@ function create(data) {
   const ts = now();
   const tags = Array.isArray(data.tags) ? data.tags
     : (data.tags ? String(data.tags).split(',').map(t => t.trim()).filter(Boolean) : []);
+  // Opt-in is never assumed. A contact is only marked consenting when the
+  // caller explicitly says so and describes where the consent came from.
+  const optInAt = data.optInSource ? ts : null;
   try {
-    db.prepare(`INSERT INTO contacts (id,userId,name,phone,email,tags,notes,accountId,createdAt,updatedAt)
-      VALUES (?,?,?,?,?,?,?,?,?,?)`).run(
+    db.prepare(`INSERT INTO contacts (id,userId,name,phone,email,tags,notes,accountId,optInAt,optInSource,createdAt,updatedAt)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(
       id, data.userId, data.name.trim(), String(data.phone).trim(), (data.email || '').trim(),
-      fromJson(tags), data.notes || '', data.accountId || null, ts, ts);
+      fromJson(tags), data.notes || '', data.accountId || null,
+      optInAt, String(data.optInSource || '').slice(0, 200), ts, ts);
   } catch (err) {
     if (/UNIQUE/i.test(err.message)) { const e = new Error('duplicate'); e.code = 11000; throw e; }
     throw err;
@@ -125,4 +244,11 @@ function softDelete(id, userId) {
   return res.changes > 0;
 }
 
-module.exports = { listForUser, listAudience, listForExport, bulkCreate, findActiveByPhone, countForUser, countAudience, create, update, softDelete, mapRow };
+module.exports = {
+  listForUser, listAudience, listForExport, bulkCreate,
+  findActiveByPhone, findActiveByDigits,
+  countForUser, countAudience, countExcludedFromAudience,
+  recordOptIn, recordOptOut, bulkRecordOptIn, countWithoutConsent, touchInbound,
+  create, update, softDelete, mapRow,
+  SERVICE_WINDOW_MS,
+};

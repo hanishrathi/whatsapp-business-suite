@@ -18,6 +18,9 @@ router.get('/stats', protect, (req, res) => {
         totalContacts: contacts.countForUser(userId),
         totalBroadcasts: broadcasts.countForUser(userId),
         accountsConnected: waAccounts.countActiveForUser(userId),
+        // Real figures replacing the old placeholder tiles.
+        templatePerformance: bmsgs.templatePerformanceForUser(userId),
+        consent: bmsgs.consentStatsForUser(userId),
       },
     });
   } catch (err) {
