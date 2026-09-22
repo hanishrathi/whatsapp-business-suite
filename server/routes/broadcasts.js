@@ -9,6 +9,21 @@ const sender = require('../services/sender');
 const { protect, requireVerified } = require('../middleware/auth');
 const { logAction } = require('../utils/audit');
 
+/*
+ * Template variable values, keyed by slot number. Only positive integer keys
+ * and short strings — this is interpolated into a message Meta will deliver.
+ */
+function sanitizeVariables(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return {};
+  const out = {};
+  for (const [k, v] of Object.entries(input)) {
+    if (!/^[1-9]\d{0,2}$/.test(String(k))) continue;
+    if (v === null || v === undefined) continue;
+    out[String(k)] = String(v).slice(0, 1024);
+  }
+  return out;
+}
+
 // Statuses a user may set directly; sent/completed are reserved for the send engine.
 const SETTABLE_STATUSES = ['draft', 'scheduled', 'paused', 'cancelled'];
 
@@ -46,7 +61,7 @@ router.get('/', protect, (req, res) => {
 // POST /api/broadcasts
 router.post('/', protect, requireVerified, (req, res) => {
   try {
-    const { name, templateId, message, audienceTag, accountId, scheduledAt } = req.body;
+    const { name, templateId, message, audienceTag, accountId, scheduledAt, variables } = req.body;
     if (!name) return res.status(400).json({ success: false, message: 'Broadcast name is required.' });
 
     const refErr = refsError(req.user._id, { templateId, accountId });
@@ -88,6 +103,7 @@ router.post('/', protect, requireVerified, (req, res) => {
     const broadcast = broadcasts.create({
       userId: req.user._id, name, accountId, templateId, message,
       audienceTag: audienceTag || 'all', audienceCount, scheduledAt,
+      variables: sanitizeVariables(variables),
     });
     logAction(req, 'broadcast.create', { targetId: broadcast._id, meta: { audienceCount } });
     res.status(201).json({
@@ -181,9 +197,10 @@ router.get('/:id/handoff', protect, requireVerified, (req, res) => {
 // PUT /api/broadcasts/:id
 router.put('/:id', protect, requireVerified, (req, res) => {
   try {
-    const allowed = ['name', 'accountId', 'templateId', 'message', 'audienceTag', 'status', 'scheduledAt'];
+    const allowed = ['name', 'accountId', 'templateId', 'message', 'audienceTag', 'status', 'scheduledAt', 'variables'];
     const updates = {};
     for (const k of allowed) if (req.body[k] !== undefined) updates[k] = req.body[k];
+    if (updates.variables !== undefined) updates.variables = sanitizeVariables(updates.variables);
     const current = broadcasts.findForUser(req.params.id, req.user._id);
     if (!current) return res.status(404).json({ success: false, message: 'Broadcast not found.' });
     if (current.status === 'sending') {

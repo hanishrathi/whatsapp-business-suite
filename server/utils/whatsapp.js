@@ -108,6 +108,10 @@ async function testConnection(account) {
  * Meta reports the messaging limit as a tier string. It caps how many UNIQUE
  * recipients a number may start business-initiated conversations with in a
  * rolling 24 hours.
+ *
+ * Returns null when Meta did not report a tier. Guessing a number here is
+ * worse than admitting ignorance: a low guess blocks legitimate sends, a high
+ * one gives false confidence. Callers decide what to do with "unknown".
  */
 function tierToLimit(tier) {
   switch (String(tier || '').toUpperCase()) {
@@ -117,7 +121,7 @@ function tierToLimit(tier) {
     case 'TIER_10K': return 10000;
     case 'TIER_100K': return 100000;
     case 'TIER_UNLIMITED': return Number.MAX_SAFE_INTEGER;
-    default: return 250; // Unknown tier — assume the most conservative cap.
+    default: return null;
   }
 }
 

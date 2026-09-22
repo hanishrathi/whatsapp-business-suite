@@ -1,4 +1,5 @@
 const { getDb, newId } = require('../config/database');
+const { SERVICE_WINDOW_MS, STATUS_RANK } = require('./_constants');
 const { toBool, toDate, now } = require('./_map');
 
 /*
@@ -12,8 +13,6 @@ const { toBool, toDate, now } = require('./_map');
  * this table carries conversation traffic.
  */
 
-const SERVICE_WINDOW_MS = 24 * 60 * 60 * 1000;
-const STATUS_RANK = { received: 0, pending: 0, sent: 1, delivered: 2, read: 3, failed: 9 };
 
 function mapRow(row) {
   if (!row) return null;
@@ -53,39 +52,62 @@ function createInboundOnce(data) {
 }
 
 /*
- * One row per contact who has any message traffic: the latest message, how many
- * inbound messages are unread, and whether the 24h window is still open.
+ * One row per contact who has any message traffic: the latest message, and
+ * whether the 24h window is still open.
+ *
+ * Done as a single grouped query. The earlier version ran three extra queries
+ * per conversation inside a map, which the Conversations page then polled
+ * every 15 seconds — ~1,200 queries a minute per open tab for data the
+ * grouping already had. Those subqueries also filtered on contactId alone;
+ * every predicate here is scoped to userId.
  */
 function listConversations(userId, limit = 100) {
   const rows = getDb().prepare(`
-    SELECT m.contactId, m.phone,
-           MAX(m.createdAt) AS lastAt,
-           COUNT(*) AS total
-      FROM messages m
-     WHERE m.userId = ? AND m.contactId IS NOT NULL
-     GROUP BY m.contactId
-     ORDER BY lastAt DESC
-     LIMIT ?`).all(userId, limit);
+    SELECT
+      m.contactId                                   AS contactId,
+      c.name                                        AS name,
+      c.phone                                       AS phone,
+      c.status                                      AS status,
+      c.optInAt                                     AS optInAt,
+      c.optOutAt                                    AS optOutAt,
+      COUNT(*)                                      AS total,
+      MAX(m.createdAt)                              AS lastAt,
+      MAX(CASE WHEN m.direction = 'in' THEN m.createdAt END) AS lastInboundAt
+    FROM messages m
+    JOIN contacts c ON c.id = m.contactId AND c.userId = m.userId
+    WHERE m.userId = ? AND m.contactId IS NOT NULL
+    GROUP BY m.contactId
+    ORDER BY lastAt DESC
+    LIMIT ?`).all(userId, limit);
 
-  const db = getDb();
+  if (!rows.length) return [];
+
+  // One extra query total (not per row) for the latest message in each thread.
+  const ids = rows.map(r => r.contactId);
+  const placeholders = ids.map(() => '?').join(',');
+  const latest = getDb().prepare(`
+    SELECT m.contactId, m.body, m.type, m.direction
+      FROM messages m
+      JOIN (SELECT contactId, MAX(createdAt) mx FROM messages
+             WHERE userId = ? AND contactId IN (${placeholders}) GROUP BY contactId) t
+        ON t.contactId = m.contactId AND t.mx = m.createdAt
+     WHERE m.userId = ?`).all(userId, ...ids, userId);
+  const lastByContact = new Map(latest.map(l => [l.contactId, l]));
+
   return rows.map(r => {
-    const last = db.prepare(
-      'SELECT * FROM messages WHERE contactId = ? ORDER BY createdAt DESC LIMIT 1').get(r.contactId);
-    const contact = db.prepare('SELECT name, status, optInAt, optOutAt FROM contacts WHERE id = ?').get(r.contactId);
-    const lastInbound = db.prepare(
-      `SELECT createdAt FROM messages WHERE contactId = ? AND direction = 'in' ORDER BY createdAt DESC LIMIT 1`).get(r.contactId);
+    const last = lastByContact.get(r.contactId);
     return {
       contactId: r.contactId,
-      name: (contact && contact.name) || r.phone,
+      name: r.name || r.phone,
       phone: r.phone,
-      status: contact && contact.status,
-      hasOptIn: !!(contact && contact.optInAt && !contact.optOutAt),
+      status: r.status,
+      hasOptIn: !!(r.optInAt && !r.optOutAt),
       lastMessage: last ? (last.body || `[${last.type}]`) : '',
       lastDirection: last && last.direction,
       lastAt: toDate(r.lastAt),
       total: r.total,
-      serviceWindowOpen: !!lastInbound && (Date.now() - lastInbound.createdAt) < SERVICE_WINDOW_MS,
-      windowExpiresAt: lastInbound ? toDate(lastInbound.createdAt + SERVICE_WINDOW_MS) : null,
+      serviceWindowOpen: !!r.lastInboundAt && (Date.now() - r.lastInboundAt) < SERVICE_WINDOW_MS,
+      windowExpiresAt: r.lastInboundAt ? toDate(r.lastInboundAt + SERVICE_WINDOW_MS) : null,
     };
   });
 }

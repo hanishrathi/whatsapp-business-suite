@@ -173,8 +173,12 @@ router.post('/:id/test', protect, requireVerified, async (req, res) => {
         quality: qualityMap[r.qualityRating] || 'high',
         qualityLabel: (qualityMap[r.qualityRating] || 'high').replace(/^./, c => c.toUpperCase()),
       } : {}),
-      // Refresh the messaging tier while we're here — it gates audience size.
-      ...(r.ok && r.messagingLimit ? {
+      /*
+       * Refresh the messaging tier while we're here — it gates audience size.
+       * Only write it when Meta actually reported one; a response missing the
+       * field must not overwrite a known tier with a guess.
+       */
+      ...(r.ok && r.messagingLimit != null ? {
         messagingLimit: r.messagingLimit,
         messagingLimitCheckedAt: new Date(),
       } : {}),
@@ -187,9 +191,11 @@ router.post('/:id/test', protect, requireVerified, async (req, res) => {
     logAction(req, 'whatsapp_account.test', { targetId: req.params.id, meta: { ok: r.ok } });
 
     if (!r.ok) return res.status(400).json({ success: false, message: `Connection failed: ${r.error}`, code: r.code });
-    const tierNote = r.messagingLimit && r.messagingLimit < Number.MAX_SAFE_INTEGER
-      ? ` Messaging tier: ${r.messagingLimit.toLocaleString()} unique recipients per 24h.`
-      : '';
+    const tierNote = r.messagingLimit == null
+      ? ' Meta did not report a messaging tier for this number, so audience-size checks stay off until it does.'
+      : r.messagingLimit < Number.MAX_SAFE_INTEGER
+        ? ` Messaging tier: ${r.messagingLimit.toLocaleString()} unique recipients per 24h.`
+        : ' Messaging tier: unlimited.';
     res.json({
       success: true,
       message: `Connected! Verified as "${r.verifiedName || account.name}" (${r.displayPhoneNumber || account.phone}).${tierNote}`,

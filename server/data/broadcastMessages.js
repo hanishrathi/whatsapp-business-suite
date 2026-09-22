@@ -1,4 +1,5 @@
 const { getDb, newId } = require('../config/database');
+const { STATUS_RANK } = require('./_constants');
 const { now } = require('./_map');
 
 /*
@@ -7,15 +8,14 @@ const { now } = require('./_map');
  * Statuses only move forward (a late 'delivered' webhook can't undo 'read').
  */
 
-const STATUS_RANK = { pending: 0, sent: 1, delivered: 2, read: 3, failed: 9 };
 
-function createPending(broadcastId, userId, contact) {
+function createPending(broadcastId, userId, contact, accountId) {
   const db = getDb();
   const id = newId();
   const ts = now();
-  db.prepare(`INSERT INTO broadcast_messages (id,broadcastId,userId,contactId,phone,status,createdAt,updatedAt)
-              VALUES (?,?,?,?,?,'pending',?,?)`)
-    .run(id, broadcastId, userId, contact._id || null, contact.phone, ts, ts);
+  db.prepare(`INSERT INTO broadcast_messages (id,broadcastId,userId,accountId,contactId,phone,status,createdAt,updatedAt)
+              VALUES (?,?,?,?,?,?,'pending',?,?)`)
+    .run(id, broadcastId, userId, accountId || null, contact._id || null, contact.phone, ts, ts);
   return id;
 }
 
@@ -45,24 +45,25 @@ function resetToPending(id) {
 }
 
 /*
- * Unique recipients this number has started business-initiated conversations
- * with in the last rolling 24 hours. Meta's messaging tier caps exactly this,
- * across every broadcast — not per broadcast.
+ * Phones this ACCOUNT has started business-initiated conversations with in the
+ * last rolling 24 hours. Meta's messaging tier is per phone number, so this is
+ * scoped to the sending account, not the whole tenant — counting a second
+ * number's traffic against this one's cap refuses sends that are actually fine.
+ *
+ * Rows written before accountId existed have it NULL; they are attributed to
+ * the account being checked so an upgrade does not lose yesterday's count.
  */
-function uniqueRecipientsLast24h(userId) {
-  return getDb().prepare(
-    `SELECT COUNT(DISTINCT phone) c FROM broadcast_messages
-      WHERE userId = ? AND createdAt >= ? AND status != 'failed'`)
-    .get(userId, Date.now() - 24 * 60 * 60 * 1000).c;
-}
-
-// Phones already messaged in the window — they don't consume fresh tier quota.
-function recipientsLast24h(userId) {
+function recipientsLast24h(userId, accountId) {
   const rows = getDb().prepare(
     `SELECT DISTINCT phone FROM broadcast_messages
-      WHERE userId = ? AND createdAt >= ? AND status != 'failed'`)
-    .all(userId, Date.now() - 24 * 60 * 60 * 1000);
+      WHERE userId = ? AND createdAt >= ? AND status != 'failed'
+        AND (accountId = ? OR accountId IS NULL)`)
+    .all(userId, Date.now() - 24 * 60 * 60 * 1000, accountId || null);
   return new Set(rows.map(r => r.phone));
+}
+
+function uniqueRecipientsLast24h(userId, accountId) {
+  return recipientsLast24h(userId, accountId).size;
 }
 
 // Webhook path: advance status by WhatsApp message id. Returns the row (for broadcastId) or null.

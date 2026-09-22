@@ -6,11 +6,6 @@
    number is, what it does to the business, and what to do next.
    ========================================================= */
 (function () {
-  function esc(s) {
-    return String(s == null ? '' : s).replace(/[&<>"']/g, c => (
-      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
-    ));
-  }
   function loggedIn() { return typeof API !== 'undefined' && API.isLoggedIn(); }
 
   let current = null;   // last payload, so the modal can look a signal up

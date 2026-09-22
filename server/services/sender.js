@@ -42,11 +42,32 @@ function personalize(text, contact) {
 
 /*
  * Values for a template's positional variables, for one contact.
- * {{1}} is the contact name by convention; later slots fall back to empty
- * strings, which Meta accepts as long as the count matches.
+ *
+ * {{1}} is the contact's name by convention. Slots 2..N come from the
+ * broadcast's own `variables` map, which is the same for every recipient.
+ * Meta rejects an empty parameter, so a template with a slot nobody filled is
+ * refused before the send rather than delivered as "your order  ships on ."
  */
-function valuesFor(contact) {
-  return { 1: contact.name };
+function valuesFor(contact, broadcastVariables) {
+  return { 1: contact.name, ...(broadcastVariables || {}) };
+}
+
+/*
+ * Which of a template's variable slots have no value? Returns the missing
+ * indexes so the caller can say exactly what to supply.
+ */
+function missingVariables(template, broadcastVariables) {
+  const declared = wa.countPlaceholders(
+    (Array.isArray(template.components) ? template.components : [])
+      .filter(c => ['BODY', 'HEADER'].includes(String(c.type).toUpperCase()))
+      .map(c => c.text || '').join(' '));
+  const have = { 1: true, ...(broadcastVariables || {}) };
+  const missing = [];
+  for (let i = 1; i <= declared; i++) {
+    const v = have[i] ?? have[String(i)];
+    if (v === undefined || v === null || String(v).trim() === '') missing.push(i);
+  }
+  return missing;
 }
 
 /*
@@ -67,7 +88,12 @@ async function sendWithRetry(fn) {
   }
 }
 
-async function runBroadcast(b, account, audience, template, category) {
+/*
+ * `existingRows` maps phone -> broadcast_messages id. On a retry the rows
+ * already exist; reusing them is what stops a retry from doubling the
+ * recipient count and leaving phantom 'pending' rows behind.
+ */
+async function runBroadcast(b, account, audience, template, category, existingRows) {
   let sent = 0, failed = 0, skipped = 0;
   let abortReason = null;
 
@@ -86,8 +112,9 @@ async function runBroadcast(b, account, audience, template, category) {
         continue;
       }
 
-      const rowId = bmsgs.createPending(b._id, b.userId, contact);
-      const components = wa.buildTemplateComponents(template, valuesFor(contact));
+      const rowId = (existingRows && existingRows.get(contact.phone))
+        || bmsgs.createPending(b._id, b.userId, contact, account._id);
+      const components = wa.buildTemplateComponents(template, valuesFor(contact, b.variables));
       const result = await sendWithRetry(() =>
         wa.sendTemplate(account, contact.phone, template.name, template.language, components));
 
@@ -116,8 +143,16 @@ async function runBroadcast(b, account, audience, template, category) {
   } finally {
     inFlight.delete(b._id);
     bmsgs.syncBroadcastCounters(b._id);
-    const finalStatus = sent > 0 ? 'sent' : 'failed';
-    broadcasts.update(b._id, b.userId, { status: finalStatus });
+    /*
+     * A run that stopped early is not simply "sent" — some of the audience was
+     * never contacted. Record why, so the operator sees it instead of it
+     * living only in a server log.
+     */
+    const finalStatus = abortReason ? 'failed' : (sent > 0 ? 'sent' : 'failed');
+    broadcasts.update(b._id, b.userId, {
+      status: finalStatus,
+      abortReason: abortReason ? String(abortReason).slice(0, 300) : '',
+    });
     // Keep the sending account's lifetime counters honest.
     if (sent > 0) {
       const freshAccount = waAccounts.findForUser(account._id, b.userId);
@@ -131,6 +166,33 @@ async function runBroadcast(b, account, audience, template, category) {
     if (abortReason) console.error(`Broadcast ${b._id} aborted: ${abortReason}`);
   }
   return { sent, failed, skipped, abortReason };
+}
+
+/*
+ * Messaging tier gate.
+ *
+ * Meta caps unique recipients per rolling 24h PER PHONE NUMBER, across every
+ * broadcast. Returns an error object when the send would exceed it, or null
+ * when it is fine — including when the tier is simply not known yet, because
+ * refusing a send on a number we invented is worse than letting it through.
+ */
+function tierGate(account, userId, audience) {
+  const limit = account.messagingLimit;
+  if (limit == null) return null; // Meta has not told us; do not invent a cap.
+
+  const alreadyMessaged = bmsgs.recipientsLast24h(userId, account._id);
+  const fresh = audience.filter(c => !alreadyMessaged.has(c.phone)).length;
+  if (alreadyMessaged.size + fresh <= limit) return null;
+
+  const remaining = Math.max(0, limit - alreadyMessaged.size);
+  return {
+    error: `"${account.name}" is on a ${limit.toLocaleString()}-recipient/24h messaging tier and has already reached ${alreadyMessaged.size.toLocaleString()} unique recipients in the last 24 hours. This send needs ${fresh.toLocaleString()} new ones but only ${remaining.toLocaleString()} remain. Narrow the audience with a tag, or wait for the window to roll forward. Meta raises the tier automatically as you send consistently at good quality.`,
+    code: 'OVER_TIER_LIMIT',
+    audienceCount: audience.length,
+    messagingLimit: limit,
+    usedLast24h: alreadyMessaged.size,
+    remaining,
+  };
 }
 
 /*
@@ -208,26 +270,21 @@ function sendNow(broadcastId, userId) {
   }
 
   /*
-   * Messaging tier: a number may only start business-initiated conversations
-   * with N unique recipients per ROLLING 24 hours — across every broadcast,
-   * not per broadcast. Count who has already been messaged in the window so a
-   * sequence of small blasts can't quietly blow through the tier.
+   * Every variable the template declares must have a value. Meta rejects an
+   * empty parameter, and a half-filled template reads as broken to the
+   * customer, so this is refused before anything is sent.
    */
-  const limit = account.messagingLimit || 250;
-  const alreadyMessaged = bmsgs.recipientsLast24h(userId);
-  const freshRecipients = audience.filter(c => !alreadyMessaged.has(c.phone)).length;
-  const wouldTotal = alreadyMessaged.size + freshRecipients;
-  if (wouldTotal > limit) {
-    const remaining = Math.max(0, limit - alreadyMessaged.size);
+  const missing = missingVariables(template, b.variables);
+  if (missing.length) {
     return {
-      error: `"${account.name}" is on a ${limit.toLocaleString()}-recipient/24h messaging tier and has already reached ${alreadyMessaged.size.toLocaleString()} unique recipients in the last 24 hours. This broadcast needs ${freshRecipients.toLocaleString()} new ones but only ${remaining.toLocaleString()} remain. Narrow the audience with a tag, or wait for the window to roll forward. Meta raises the tier automatically as you send consistently at good quality.`,
-      code: 'OVER_TIER_LIMIT',
-      audienceCount: audience.length,
-      messagingLimit: limit,
-      usedLast24h: alreadyMessaged.size,
-      remaining,
+      error: `Template "${template.name}" has ${missing.length} variable${missing.length === 1 ? '' : 's'} with no value (${missing.map(i => '{{' + i + '}}').join(', ')}). {{1}} is filled with the contact's name automatically; set the rest on the broadcast before sending.`,
+      code: 'MISSING_VARIABLES',
+      missing,
     };
   }
+
+  const gate = tierGate(account, userId, audience);
+  if (gate) return gate;
 
   // Atomic claim so two clicks / scheduler+click can't double-send.
   if (!broadcasts.claimForSending(b._id, userId)) return { error: 'This broadcast is already sending.', code: 'BUSY' };
@@ -278,20 +335,35 @@ function retryFailed(broadcastId, userId) {
   // Only retry contacts who still consent — consent may have changed since.
   const category = (template.category || 'marketing').toLowerCase();
   const audience = [];
+  const existingRows = new Map();
   for (const row of rows) {
     const contact = contacts.findActiveByPhone(userId, row.phone);
     if (!contact || !contact.hasOptIn || contact.status !== 'active') continue;
     if (category === 'marketing' && !contact.acceptsMarketing) continue;
     audience.push(contact);
-    bmsgs.resetToPending(row.id);
+    // Reuse the existing row. Creating a new one per retry would double the
+    // recipient count and strand the old row as permanently 'pending'.
+    existingRows.set(contact.phone, row.id);
   }
   if (!audience.length) {
     return { error: 'None of the failed recipients still have valid consent.', code: 'NO_AUDIENCE' };
   }
 
+  // A retry consumes tier quota exactly like a first send does.
+  const gate = tierGate(account, userId, audience);
+  if (gate) return gate;
+
+  /*
+   * Claim BEFORE touching any row. Resetting first and claiming second meant a
+   * lost race left rows flipped to 'pending' with no send behind them — they
+   * stopped counting as failures, so the Retry button vanished and those
+   * recipients were silently dropped.
+   */
   if (!broadcasts.claimForSending(b._id, userId)) return { error: 'This broadcast is already sending.', code: 'BUSY' };
   inFlight.add(b._id);
-  const promise = runBroadcast(b, account, audience, template, category);
+  for (const id of existingRows.values()) bmsgs.resetToPending(id);
+
+  const promise = runBroadcast(b, account, audience, template, category, existingRows);
   return { started: true, retryCount: audience.length, promise };
 }
 
@@ -310,13 +382,22 @@ function buildHandoffLinks(broadcastId, userId) {
   if (!b) return { error: 'Broadcast not found.', code: 'NOT_FOUND' };
 
   let text = b.message;
+  let category = null;
   if (b.templateId) {
     const template = templates.findForUser(b.templateId, userId);
-    if (template) text = template.body;
+    if (template) {
+      text = template.body;
+      category = (template.category || 'marketing').toLowerCase();
+    }
   }
   if (!text) return { error: 'This broadcast has no message text to hand off.', code: 'NO_MESSAGE' };
 
-  const audience = contacts.listAudience(userId, b.audienceTag);
+  /*
+   * The consent rules do not change because a human presses send. A contact
+   * who opted out of marketing must not appear in the links for a marketing
+   * broadcast either.
+   */
+  const audience = contacts.listAudience(userId, b.audienceTag, 5000, category);
   if (!audience.length) {
     return { error: 'No contacts in this audience have recorded opt-in.', code: 'NO_AUDIENCE' };
   }
@@ -335,6 +416,9 @@ function buildHandoffLinks(broadcastId, userId) {
 /* ---------- scheduler ---------- */
 
 let timer = null;
+
+// Refusals that clear on their own — the broadcast stays scheduled.
+const RECOVERABLE_SCHEDULE_CODES = new Set(['OVER_TIER_LIMIT', 'BUSY']);
 
 // If the process restarted mid-send, broadcasts stuck in 'sending' would hang
 // forever. Any 'sending' row this process doesn't own and hasn't touched for
@@ -358,8 +442,18 @@ function tick() {
     for (const b of broadcasts.listDue()) {
       const r = sendNow(b._id, b.userId);
       if (r.error) {
-        // Can't send (e.g. no credentials): mark failed so it doesn't retry forever.
-        broadcasts.update(b._id, b.userId, { status: 'failed' });
+        /*
+         * Some refusals are temporary: the tier window rolls forward, and a
+         * BUSY claim clears when the other run finishes. Marking those 'failed'
+         * meant a campaign that merely arrived at a full moment never went out
+         * at all. Leave them scheduled and try again on the next tick.
+         */
+        if (RECOVERABLE_SCHEDULE_CODES.has(r.code)) {
+          console.warn(`Scheduled broadcast ${b._id} deferred: ${r.error}`);
+          continue;
+        }
+        // Anything else is permanent (no credentials, template gone).
+        broadcasts.update(b._id, b.userId, { status: 'failed', abortReason: String(r.error).slice(0, 300) });
         console.error(`Scheduled broadcast ${b._id} could not start: ${r.error}`);
       } else {
         console.log(`Scheduled broadcast ${b._id} started (${r.audienceCount} recipients).`);

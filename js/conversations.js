@@ -6,11 +6,6 @@
    operator can see when the window closes and what they can do after it.
    ========================================================= */
 (function () {
-  function esc(s) {
-    return String(s == null ? '' : s).replace(/[&<>"']/g, c => (
-      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
-    ));
-  }
   function loggedIn() {
     return typeof API !== 'undefined' && API.isLoggedIn();
   }

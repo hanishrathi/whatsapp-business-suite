@@ -1,5 +1,5 @@
 const { getDb, newId } = require('../config/database');
-const { toBool, toDate, fromDate, now } = require('./_map');
+const { toBool, toDate, toJson, fromJson, fromDate, now } = require('./_map');
 
 function mapRow(row) {
   if (!row) return null;
@@ -10,6 +10,10 @@ function mapRow(row) {
     status: row.status, scheduledAt: toDate(row.scheduledAt),
     sentCount: row.sentCount, deliveredCount: row.deliveredCount, readCount: row.readCount,
     failedCount: row.failedCount || 0,
+    // Values for template slots {{2}}..{{N}}; {{1}} is always the contact name.
+    variables: toJson(row.variables, {}),
+    // Why a run stopped early, if it did.
+    abortReason: row.abortReason || '',
     isActive: toBool(row.isActive),
     createdAt: toDate(row.createdAt), updatedAt: toDate(row.updatedAt),
   };
@@ -42,11 +46,12 @@ function create(data) {
   const db = getDb();
   const id = newId();
   const ts = now();
-  db.prepare(`INSERT INTO broadcasts (id,userId,name,accountId,templateId,message,audienceTag,audienceCount,status,scheduledAt,createdAt,updatedAt)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+  db.prepare(`INSERT INTO broadcasts (id,userId,name,accountId,templateId,message,audienceTag,audienceCount,status,scheduledAt,variables,createdAt,updatedAt)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
     id, data.userId, data.name.trim(), data.accountId || null, data.templateId || null,
     data.message || '', data.audienceTag || 'all', data.audienceCount || 0,
-    data.scheduledAt ? 'scheduled' : 'draft', fromDate(data.scheduledAt), ts, ts);
+    data.scheduledAt ? 'scheduled' : 'draft', fromDate(data.scheduledAt),
+    fromJson(data.variables || {}), ts, ts);
   return mapRow(db.prepare('SELECT * FROM broadcasts WHERE id = ?').get(id));
 }
 
@@ -55,6 +60,7 @@ function update(id, userId, fields) {
   const out = {};
   for (const [k, v] of Object.entries(fields)) {
     if (k === 'scheduledAt') out.scheduledAt = fromDate(v);
+    else if (k === 'variables') out.variables = fromJson(v || {});
     else out[k] = v;
   }
   const cols = Object.keys(out);

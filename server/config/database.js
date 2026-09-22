@@ -257,7 +257,9 @@ const MIGRATIONS = [
   `ALTER TABLE whatsapp_accounts ADD COLUMN channelType TEXT DEFAULT 'cloud_api'`,
   // Messaging tier: unique recipients allowed per rolling 24h for
   // business-initiated conversations (250 / 1K / 10K / 100K / unlimited).
-  `ALTER TABLE whatsapp_accounts ADD COLUMN messagingLimit INTEGER DEFAULT 250`,
+  // NULL means "not yet read from Meta". A fabricated default would either
+  // block legitimate sends or give false confidence, so unknown stays unknown.
+  `ALTER TABLE whatsapp_accounts ADD COLUMN messagingLimit INTEGER`,
   `ALTER TABLE whatsapp_accounts ADD COLUMN messagingLimitCheckedAt INTEGER`,
 
   // Templates are owned by Meta, not by us. These mirror the WABA record.
@@ -282,6 +284,17 @@ const MIGRATIONS = [
   // Billing category, so spend can be attributed once service messages
   // become billable on 2026-10-01.
   `ALTER TABLE broadcast_messages ADD COLUMN billingCategory TEXT DEFAULT ''`,
+
+  // Which number sent it. Meta's messaging tier is per phone number, so the
+  // rolling 24h recipient count has to be per account too — without this the
+  // count was user-wide and compared against one account's limit.
+  `ALTER TABLE broadcast_messages ADD COLUMN accountId TEXT`,
+
+  // Why a run stopped early, so the operator can see it instead of it living
+  // only in a server log.
+  `ALTER TABLE broadcasts ADD COLUMN abortReason TEXT DEFAULT ''`,
+  // Values for template variables beyond {{1}}, as JSON {"2":"...","3":"..."}.
+  `ALTER TABLE broadcasts ADD COLUMN variables TEXT DEFAULT '{}'`,
 ];
 
 function runMigrations() {
@@ -294,6 +307,11 @@ function runMigrations() {
     }
   }
   db.exec(`CREATE INDEX IF NOT EXISTS ix_contacts_optin ON contacts(userId, optInAt)`);
+  // Inbound webhooks look contacts up by digits-only phone; without this the
+  // lookup was a full scan of the tenant's contacts on every message.
+  db.exec(`CREATE INDEX IF NOT EXISTS ix_contacts_user_phone ON contacts(userId, phone)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS ix_bm_account_time ON broadcast_messages(accountId, createdAt)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS ix_msg_user_dir_time ON messages(userId, direction, createdAt)`);
   // Powers the rolling 24h unique-recipient check against the messaging tier.
   db.exec(`CREATE INDEX IF NOT EXISTS ix_bm_user_phone_time ON broadcast_messages(userId, phone, createdAt)`);
   // A WABA template is keyed by name+language, so duplicates are meaningless.

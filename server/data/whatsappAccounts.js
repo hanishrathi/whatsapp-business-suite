@@ -31,7 +31,10 @@ function mapRow(row, includeToken = false) {
     channelType,
     // Only Cloud API numbers can be automated.
     canAutoSend: channelType === 'cloud_api',
-    messagingLimit: row.messagingLimit == null ? 250 : row.messagingLimit,
+    // null = Meta has not told us the tier yet. Callers must handle that
+    // rather than treat an unknown tier as the lowest one.
+    messagingLimit: row.messagingLimit == null ? null : row.messagingLimit,
+    messagingLimitKnown: row.messagingLimit != null,
     messagingLimitCheckedAt: toDate(row.messagingLimitCheckedAt),
     createdAt: toDate(row.createdAt), updatedAt: toDate(row.updatedAt),
   };

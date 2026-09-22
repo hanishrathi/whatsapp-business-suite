@@ -1,5 +1,4 @@
 const { getDb } = require('../config/database');
-const contacts = require('../data/contacts');
 const waAccounts = require('../data/whatsappAccounts');
 const bmsgs = require('../data/broadcastMessages');
 const health = require('../data/healthSnapshots');
@@ -64,29 +63,44 @@ function inboundCount(userId, sinceMs) {
  * How many inbound messages got a reply while the 24h window was still open.
  * Answering in-window is the cheap path: no template fee, and (until the
  * October 2026 change) no fee at all.
+ *
+ * One pass. The earlier version ran a query per inbound message, so a tenant
+ * with 5,000 inbound messages blocked the single Node process for 5,000
+ * round-trips just to open the Insights page.
  */
 function windowResponse(userId, sinceMs) {
-  const db = getDb();
-  const inbound = db.prepare(
-    `SELECT contactId, createdAt FROM messages
-      WHERE userId = ? AND direction = 'in' AND contactId IS NOT NULL AND createdAt >= ?
-      ORDER BY createdAt`).all(userId, sinceMs);
-  if (!inbound.length) return { inbound: 0, answered: 0, rate: 0, medianMinutes: null };
+  const rows = getDb().prepare(
+    `SELECT contactId, direction, createdAt FROM messages
+      WHERE userId = ? AND contactId IS NOT NULL AND createdAt >= ?
+      ORDER BY contactId, createdAt`).all(userId, sinceMs);
+  if (!rows.length) return { inbound: 0, answered: 0, rate: 0, medianMinutes: null };
 
-  let answered = 0;
+  let inbound = 0, answered = 0;
   const gaps = [];
-  for (const i of inbound) {
-    const reply = db.prepare(
-      `SELECT createdAt FROM messages WHERE userId = ? AND contactId = ? AND direction = 'out'
-        AND createdAt > ? ORDER BY createdAt LIMIT 1`).get(userId, i.contactId, i.createdAt);
-    if (reply && reply.createdAt - i.createdAt <= DAY) {
-      answered++;
-      gaps.push((reply.createdAt - i.createdAt) / 60000);
+  // Walk each contact's timeline once; an inbound is answered by the next
+  // outbound within 24h, and consecutive inbounds share that same reply.
+  let pendingInbound = [];
+  let currentContact = null;
+
+  const flush = () => { inbound += pendingInbound.length; pendingInbound = []; };
+
+  for (const r of rows) {
+    if (r.contactId !== currentContact) { flush(); currentContact = r.contactId; }
+    if (r.direction === 'in') {
+      pendingInbound.push(r.createdAt);
+    } else if (pendingInbound.length) {
+      for (const at of pendingInbound) {
+        inbound++;
+        if (r.createdAt - at <= DAY) { answered++; gaps.push((r.createdAt - at) / 60000); }
+      }
+      pendingInbound = [];
     }
   }
+  flush(); // trailing inbounds with no reply at all
+
   gaps.sort((a, b) => a - b);
   return {
-    inbound: inbound.length, answered, rate: pct(answered, inbound.length),
+    inbound, answered, rate: pct(answered, inbound),
     medianMinutes: gaps.length ? Math.round(gaps[Math.floor(gaps.length / 2)]) : null,
   };
 }
@@ -125,24 +139,51 @@ function build(userId, { days = 30 } = {}) {
 
   /* --- 2. Daily sending capacity --- */
   if (accounts.length) {
-    const limit = Math.max(...accounts.map(a => a.messagingLimit || 250));
-    const used = bmsgs.uniqueRecipientsLast24h(userId);
-    const headroom = Math.max(0, limit - used);
-    const usedPct = pct(used, limit);
-    signals.push({
-      key: 'capacity',
-      label: 'Daily sending capacity',
-      value: usedPct,
-      display: `${used.toLocaleString()} of ${limit.toLocaleString()} used`,
-      sub: `${headroom.toLocaleString()} more people you can start a conversation with today`,
-      status: usedPct >= 90 ? 'act' : usedPct >= 70 ? 'watch' : 'good',
-      what: 'Meta caps how many different people you may start a conversation with in any rolling 24 hours. Replying to someone who messaged you first does not count against it.',
-      impact: 'This is a hard ceiling on campaign size. Queue a broadcast bigger than the headroom and the surplus simply fails — you lose the sends, the customers never hear from you, and the failures drag your quality rating down. Meta raises the cap on its own once you send consistently at good quality.',
-      action: usedPct >= 70
-        ? `Split large broadcasts across days, or narrow the audience with a tag. You have room for about ${headroom.toLocaleString()} more people today.`
-        : null,
-      detail: { used, limit, headroom },
+    /*
+     * The tier is per phone number, so report the number under the most
+     * pressure rather than the roomiest one — quoting the best case tells the
+     * operator they have headroom the send they are about to make does not.
+     */
+    const perAccount = accounts.map(a => {
+      const used = bmsgs.uniqueRecipientsLast24h(userId, a._id);
+      return { name: a.name, limit: a.messagingLimit, used,
+               headroom: a.messagingLimit == null ? null : Math.max(0, a.messagingLimit - used),
+               usedPct: a.messagingLimit == null ? null : pct(used, a.messagingLimit) };
     });
+    const known = perAccount.filter(a => a.limit != null);
+    const tightest = known.sort((a, b) => b.usedPct - a.usedPct)[0];
+
+    if (!known.length) {
+      signals.push({
+        key: 'capacity',
+        label: 'Daily sending capacity',
+        value: null,
+        display: 'Not known yet',
+        sub: 'Meta has not reported a messaging tier for your numbers',
+        status: 'watch',
+        what: 'Meta caps how many different people you may start a conversation with in any rolling 24 hours. Replying to someone who messaged you first does not count against it.',
+        impact: 'Until the cap is known, this app cannot warn you before a broadcast exceeds it — the surplus would simply fail at Meta, wasting the sends and denting your quality rating.',
+        action: 'Open Accounts and use "Test Connection" to read your current tier from Meta.',
+        detail: { perAccount },
+      });
+    } else {
+      signals.push({
+        key: 'capacity',
+        label: 'Daily sending capacity',
+        value: tightest.usedPct,
+        display: `${tightest.used.toLocaleString()} of ${tightest.limit.toLocaleString()} used`,
+        sub: known.length > 1
+          ? `${tightest.name} is the tightest — ${tightest.headroom.toLocaleString()} more people today`
+          : `${tightest.headroom.toLocaleString()} more people you can start a conversation with today`,
+        status: tightest.usedPct >= 90 ? 'act' : tightest.usedPct >= 70 ? 'watch' : 'good',
+        what: 'Meta caps how many different people you may start a conversation with in any rolling 24 hours, separately for each of your numbers. Replying to someone who messaged you first does not count against it.',
+        impact: 'This is a hard ceiling on campaign size. Queue a broadcast bigger than the headroom and the surplus simply fails — you lose the sends, the customers never hear from you, and the failures drag your quality rating down. Meta raises the cap on its own once you send consistently at good quality.',
+        action: tightest.usedPct >= 70
+          ? `Split large broadcasts across days, or narrow the audience with a tag. "${tightest.name}" has room for about ${tightest.headroom.toLocaleString()} more people today.`
+          : null,
+        detail: { perAccount },
+      });
+    }
   }
 
   /* --- 3. Delivery rate --- */

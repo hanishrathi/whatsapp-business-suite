@@ -2,11 +2,6 @@
    Contacts / Templates / Broadcasts — live, per-user data
    ========================================================= */
 (function () {
-  function esc(s) {
-    return String(s == null ? '' : s).replace(/[&<>"']/g, c => (
-      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
-    ));
-  }
   function pill(status) {
     return `<span class="status-pill ${esc(status)}">${esc(status)}</span>`;
   }
@@ -212,7 +207,7 @@
         : `${b.sentCount || 0}${b.failedCount ? ` <span style="color:#FF6B6B">(${b.failedCount} failed)</span>` : ''}`;
       return `
       <tr>
-        <td><strong>${esc(b.name)}</strong>${b.scheduledAt && b.status === 'scheduled' ? `<br><small style="color:#86868b">⏱ ${new Date(b.scheduledAt).toLocaleString()}</small>` : ''}</td>
+        <td><strong>${esc(b.name)}</strong>${b.scheduledAt && b.status === 'scheduled' ? `<br><small style="color:#86868b">⏱ ${new Date(b.scheduledAt).toLocaleString()}</small>` : ''}${b.abortReason ? `<br><small style="color:#FF6B6B">Stopped early: ${esc(b.abortReason)}</small>` : ''}</td>
         <td>${b.audienceCount} contacts</td>
         <td>${pill(b.status)}</td>
         <td>${progress}</td>
@@ -300,11 +295,35 @@
       ? approved.map(t => ({ value: t._id, label: `${t.name} (${t.language}) — ${t.category}` }))
       : [{ value: '', label: 'No approved templates — sync on the Templates page' }];
 
+    /*
+     * {{1}} is always the contact's name. Any further slot the template
+     * declares needs a value, or Meta rejects the send — so ask for them here
+     * rather than let the broadcast fail later.
+     */
+    const extraSlots = t => {
+      const n = t ? (t.variableCount || 0) : 0;
+      return n > 1 ? Array.from({ length: n - 1 }, (_, i) => i + 2) : [];
+    };
+    const renderVarFields = () => {
+      const wrap = document.getElementById('ebVarsWrap');
+      if (!wrap) return;
+      const tpl = approved.find(t => t._id === val('ebTemplate'));
+      const slots = extraSlots(tpl);
+      wrap.innerHTML = slots.length
+        ? `<div class="form-group"><label class="form-label">Template values</label>
+             <small style="color:#86868b;font-size:12px;line-height:1.5;display:block;margin-bottom:8px;">
+               {{1}} is filled with each contact's name. These apply to everyone in the broadcast.
+             </small></div>` +
+          slots.map(i => field(`Value for {{${i}}}`, 'ebVar' + i, { placeholder: `What goes in {{${i}}}` })).join('')
+        : '';
+    };
+
     openEntityModal('New Broadcast',
       field('Name', 'ebName', { placeholder: 'Diwali Sale Blast' }) +
       field('Send from', 'ebAccount', { value: firstAccount, select: accountOptions }) +
       `<div id="ebTemplateWrap">` +
         field('Approved template', 'ebTemplate', { select: templateOptions }) +
+        `<div id="ebVarsWrap"></div>` +
       `</div>` +
       `<div id="ebMessageWrap" style="display:none;">` +
         field('Message — use {{name}} to personalize', 'ebMsg', {
@@ -328,6 +347,15 @@
           if (!data.templateId) {
             return alert('Pick an approved template. Business-initiated messages must use one — sync your templates from Meta on the Templates page.');
           }
+          const tpl = approved.find(t => t._id === data.templateId);
+          const slots = extraSlots(tpl);
+          const vars = {};
+          for (const i of slots) {
+            const v = val('ebVar' + i);
+            if (!v) return alert(`Template "${tpl.name}" needs a value for {{${i}}}.`);
+            vars[i] = v;
+          }
+          if (slots.length) data.variables = vars;
         }
 
         const when = val('ebWhen');
@@ -364,7 +392,10 @@
     };
     const accSelect = document.getElementById('ebAccount');
     if (accSelect) accSelect.addEventListener('change', syncChannelFields);
+    const tplSelect = document.getElementById('ebTemplate');
+    if (tplSelect) tplSelect.addEventListener('change', renderVarFields);
     syncChannelFields();
+    renderVarFields();
   }
 
   /* ---------- CSV import / export ---------- */

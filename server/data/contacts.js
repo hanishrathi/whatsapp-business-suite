@@ -1,9 +1,7 @@
 const { getDb, newId } = require('../config/database');
+const { SERVICE_WINDOW_MS } = require('./_constants');
 const { toBool, toDate, toJson, fromJson, fromDate, now } = require('./_map');
 
-// A contact's inbound message opens a 24h customer service window, during
-// which free-form (non-template) replies are allowed.
-const SERVICE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 function mapRow(row) {
   if (!row) return null;
@@ -51,13 +49,30 @@ function findActiveByPhone(userId, phone) {
 
 /*
  * Webhook path: Meta reports the sender as digits only ("919876543210") while
- * stored contacts may be formatted ("+91 98765 43210"). Compare on digits.
- * Scoped to one user, and capped, so a busy account can't scan unbounded rows.
+ * stored contacts may be formatted ("+91 98765 43210").
+ *
+ * Tries the indexed exact forms first — which covers how this app stores
+ * numbers — and only falls back to a digit-by-digit comparison for contacts
+ * imported in some other format. The fallback is bounded so a burst of inbound
+ * webhooks cannot turn into a full table scan per message.
  */
+const DIGIT_SCAN_LIMIT = 2000;
+
 function findActiveByDigits(userId, digits) {
   const target = String(digits || '').replace(/[^\d]/g, '');
   if (!target) return null;
-  const rows = getDb().prepare('SELECT * FROM contacts WHERE userId = ? AND isActive = 1').all(userId);
+  const db = getDb();
+
+  // Indexed hit on the two spellings this app writes.
+  const direct = db.prepare(
+    `SELECT * FROM contacts WHERE userId = ? AND isActive = 1 AND phone IN (?, ?) LIMIT 1`)
+    .get(userId, '+' + target, target);
+  if (direct) return mapRow(direct);
+
+  // Legacy/odd formatting: compare on digits, newest first, bounded.
+  const rows = db.prepare(
+    `SELECT * FROM contacts WHERE userId = ? AND isActive = 1 ORDER BY createdAt DESC LIMIT ?`)
+    .all(userId, DIGIT_SCAN_LIMIT);
   const hit = rows.find(r => String(r.phone).replace(/[^\d]/g, '') === target);
   return hit ? mapRow(hit) : null;
 }
@@ -129,11 +144,23 @@ function countExcludedFromAudience(userId, tag, category) {
 
 /* ---------- consent + inbound tracking ---------- */
 
-// Record opt-in. `source` is free text describing HOW consent was obtained —
-// Meta expects businesses to be able to demonstrate this.
+/*
+ * Record opt-in. `source` is free text describing HOW consent was obtained —
+ * Meta expects businesses to be able to demonstrate this.
+ *
+ * This also lifts an earlier opt-out, including the 'unsubscribed' status and
+ * any marketing-only withdrawal. Clearing optOutAt alone left the contact
+ * excluded by the audience query, so someone who texted STOP and then START
+ * was never actually resubscribed — the platform requires honouring that.
+ * Statuses other than 'unsubscribed' (blocked, inactive) are deliberate
+ * operator choices and are left alone.
+ */
 function recordOptIn(id, userId, source) {
   const res = getDb().prepare(
-    `UPDATE contacts SET optInAt = ?, optInSource = ?, optOutAt = NULL, optOutReason = '', updatedAt = ?
+    `UPDATE contacts SET optInAt = ?, optInSource = ?, optOutAt = NULL, optOutReason = '',
+                         marketingOptOutAt = NULL,
+                         status = CASE WHEN status = 'unsubscribed' THEN 'active' ELSE status END,
+                         updatedAt = ?
      WHERE id = ? AND userId = ? AND isActive = 1`)
     .run(now(), String(source || 'manual').slice(0, 200), now(), id, userId);
   return res.changes > 0;

@@ -15,10 +15,24 @@ const { toBool, toDate, toJson, fromJson, now } = require('./_map');
 // The only Meta status that may be sent.
 const SENDABLE_STATUS = 'APPROVED';
 
-function countVariables(body) {
-  const m = (body || '').match(/\{\{\s*(\d+)\s*\}\}/g);
+/*
+ * How many positional variables a template declares. Counts the highest index
+ * across every text-bearing component, not just BODY — the send path builds
+ * parameters for HEADER too, so counting only BODY made the UI and the sender
+ * disagree about a header-only variable.
+ */
+function countVariables(text) {
+  const m = String(text || '').match(/\{\{\s*(\d+)\s*\}\}/g);
   if (!m) return 0;
   return Math.max(...m.map(s => parseInt(s.replace(/\D/g, ''), 10)));
+}
+
+// All text a template can interpolate into, for variable counting.
+function variableText(components, body) {
+  const texts = (Array.isArray(components) ? components : [])
+    .filter(c => ['BODY', 'HEADER'].includes(String(c.type).toUpperCase()))
+    .map(c => c.text || '');
+  return texts.length ? texts.join(' ') : (body || '');
 }
 
 // Pull the BODY text out of Meta's components array, for display.
@@ -121,7 +135,7 @@ function upsertFromMeta(userId, accountId, metaTemplates) {
         db.prepare(`UPDATE templates SET category = ?, body = ?, variableCount = ?, metaId = ?,
                     metaStatus = ?, rejectedReason = ?, components = ?, accountId = ?, status = ?,
                     syncedAt = ?, updatedAt = ? WHERE id = ?`)
-          .run((t.category || 'marketing').toLowerCase(), body, countVariables(body), t.id || '',
+          .run((t.category || 'marketing').toLowerCase(), body, countVariables(variableText(components, body)), t.id || '',
                (t.status || '').toUpperCase(), t.rejected_reason || '', fromJson(components),
                accountId, (t.status || '').toLowerCase(), ts, ts, existing.id);
         updated++;
@@ -130,7 +144,7 @@ function upsertFromMeta(userId, accountId, metaTemplates) {
                     metaId,metaStatus,rejectedReason,components,accountId,syncedAt,createdAt,updatedAt)
                     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
           .run(newId(), userId, t.name, (t.category || 'marketing').toLowerCase(), language, body,
-               (t.status || '').toLowerCase(), countVariables(body), t.id || '',
+               (t.status || '').toLowerCase(), countVariables(variableText(components, body)), t.id || '',
                (t.status || '').toUpperCase(), t.rejected_reason || '', fromJson(components),
                accountId, ts, ts, ts);
         added++;

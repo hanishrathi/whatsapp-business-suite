@@ -830,8 +830,3 @@ document.querySelectorAll('.convo-item-full').forEach(item => {
   });
 });
 
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
-}
