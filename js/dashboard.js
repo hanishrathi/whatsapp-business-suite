@@ -75,6 +75,7 @@ function initNavigation() {
     templates: 'Templates',
     chatbots: 'Chatbots',
     flows: 'Flows',
+    insights: 'Insights',
     analytics: 'Analytics',
     reports: 'Reports',
     accounts: 'Accounts',

@@ -341,6 +341,14 @@ const API = {
     });
   },
 
+  // ========== INSIGHTS ==========
+  async getInsights(days) {
+    return this.request('/insights' + (days ? `?days=${days}` : ''));
+  },
+  async getInsightsHistory(days) {
+    return this.request('/insights/history' + (days ? `?days=${days}` : ''));
+  },
+
   // ========== DASHBOARD ==========
   async getDashboardStats() {
     return this.request('/dashboard/stats');

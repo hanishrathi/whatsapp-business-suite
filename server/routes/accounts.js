@@ -4,6 +4,7 @@ const waAccounts = require('../data/whatsappAccounts');
 const { protect, requireVerified } = require('../middleware/auth');
 const { encrypt } = require('../utils/crypto');
 const wa = require('../utils/whatsapp');
+const health = require('../data/healthSnapshots');
 const { logAction } = require('../utils/audit');
 
 const MAX_ACCOUNTS = parseInt(process.env.MAX_WHATSAPP_ACCOUNTS || '25', 10);
@@ -178,6 +179,11 @@ router.post('/:id/test', protect, requireVerified, async (req, res) => {
         messagingLimitCheckedAt: new Date(),
       } : {}),
     });
+    if (r.ok) {
+      // Snapshot the reading so quality and tier build a history over time.
+      const fresh = waAccounts.findForUser(req.params.id, req.user._id);
+      if (fresh) health.record(fresh, 'test');
+    }
     logAction(req, 'whatsapp_account.test', { targetId: req.params.id, meta: { ok: r.ok } });
 
     if (!r.ok) return res.status(400).json({ success: false, message: `Connection failed: ${r.error}`, code: r.code });

@@ -101,6 +101,10 @@
 
       <div class="nav-section">
         <span class="nav-label">Analytics</span>
+        <a href="#" class="nav-item" data-page="insights">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 100 20 10 10 0 000-20z"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+          <span>Insights</span>
+        </a>
         <a href="#" class="nav-item" data-page="analytics">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
           <span>Analytics</span>
@@ -441,6 +445,34 @@
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Insights Page: what each number means and what it does to the business -->
+    <div class="page" id="page-insights">
+      <div class="insights-head" id="insightsHead">
+        <div style="padding:20px 0;color:#86868b;font-size:13px;">Loading…</div>
+      </div>
+      <div class="insights-grid" id="insightsGrid"></div>
+      <p style="margin:18px 2px 0;font-size:12px;color:#a1a1a6;line-height:1.6;max-width:760px;">
+        These are your own sending statistics, worked out from the messages this account has sent and
+        received. Tap any card to see what it means and what it does to your business.
+      </p>
+    </div>
+
+    <!-- Explain window: opened from an Insights card -->
+    <div class="modal-overlay" id="insightModal">
+      <div class="modal insight-modal">
+        <div class="modal-header">
+          <h3 id="insightModalTitle">Signal</h3>
+          <button class="modal-close" id="insightModalClose" aria-label="Close">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div class="modal-body" id="insightModalBody"></div>
+        <div class="modal-footer">
+          <button class="btn" id="insightModalDone">Got it</button>
         </div>
       </div>
     </div>
@@ -824,6 +856,7 @@
   <script src="js/dashboard.js"></script>
   <script src="js/entities.js"></script>
   <script src="js/conversations.js"></script>
+  <script src="js/insights.js"></script>
   <script src="js/quick-actions.js"></script>
 </body>
 </html>

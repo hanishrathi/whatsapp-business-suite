@@ -123,6 +123,7 @@ app.use('/api/templates', apiLimiter, require('./routes/templates'));
 app.use('/api/broadcasts', apiLimiter, require('./routes/broadcasts'));
 app.use('/api/conversations', apiLimiter, require('./routes/conversations'));
 app.use('/api/dashboard', apiLimiter, require('./routes/dashboard'));
+app.use('/api/insights', apiLimiter, require('./routes/insights'));
 
 // Meta webhook — no auth (Meta calls it), generous limit (delivery receipts burst).
 const webhookLimiter = rateLimit({

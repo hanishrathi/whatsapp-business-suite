@@ -194,6 +194,26 @@ function createSchema() {
     CREATE INDEX IF NOT EXISTS ix_msg_contact_time ON messages(contactId, createdAt);
     CREATE UNIQUE INDEX IF NOT EXISTS uq_msg_wamid ON messages(wamid) WHERE wamid IS NOT NULL;
 
+    /*
+     * Daily snapshot of the state Meta owns and overwrites: quality rating,
+     * messaging tier, ban state. Everything else on the Insights page is
+     * derived from raw message rows, so it is NOT duplicated here — but these
+     * three are external and are lost the moment Meta changes them.
+     */
+    CREATE TABLE IF NOT EXISTS account_health_snapshots (
+      id TEXT PRIMARY KEY,
+      userId TEXT NOT NULL,
+      accountId TEXT NOT NULL,
+      day TEXT NOT NULL,                  -- YYYY-MM-DD, UTC
+      quality TEXT DEFAULT '',
+      messagingLimit INTEGER,
+      banState TEXT DEFAULT '',
+      source TEXT DEFAULT 'poll',         -- 'poll' | 'webhook' | 'test'
+      createdAt INTEGER NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_health_day ON account_health_snapshots(accountId, day);
+    CREATE INDEX IF NOT EXISTS ix_health_user_day ON account_health_snapshots(userId, day);
+
     CREATE TABLE IF NOT EXISTS audit_logs (
       id TEXT PRIMARY KEY,
       userId TEXT,

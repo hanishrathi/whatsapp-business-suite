@@ -5,6 +5,7 @@ const bmsgs = require('../data/broadcastMessages');
 const msgs = require('../data/messages');
 const contacts = require('../data/contacts');
 const waAccounts = require('../data/whatsappAccounts');
+const health = require('../data/healthSnapshots');
 const wa = require('../utils/whatsapp');
 const { logSystemAction } = require('../utils/audit');
 
@@ -177,7 +178,9 @@ function handleAccountUpdate(value) {
   }
 
   if (!Object.keys(updates).length) return;
-  waAccounts.update(account._id, account.userId, updates);
+  const fresh = waAccounts.update(account._id, account.userId, updates);
+  // Record it before the next change overwrites it — this is the only history.
+  if (fresh) health.record(fresh, 'webhook');
   logSystemAction('whatsapp_account.meta_update', {
     userId: account.userId, targetId: account._id, meta: updates,
   });
