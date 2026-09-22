@@ -22,4 +22,27 @@ function logAction(req, action, { targetId, meta } = {}) {
   }
 }
 
-module.exports = { logAction };
+/*
+ * Record an action that has no HTTP request behind it — a webhook from Meta,
+ * a scheduled send. Consent changes especially must be auditable: if a contact
+ * opts out by replying STOP, the record of that has to survive.
+ *
+ * Usage:  logSystemAction('contact.opt_out', { userId, targetId, meta });
+ */
+function logSystemAction(action, { userId, targetId, meta } = {}) {
+  try {
+    auditLogs.create({
+      userId,
+      actorEmail: 'system',
+      action,
+      targetId,
+      ip: null,
+      userAgent: 'whatsapp-webhook',
+      meta,
+    });
+  } catch (err) {
+    console.error('Audit log write failed for system action:', action);
+  }
+}
+
+module.exports = { logAction, logSystemAction };

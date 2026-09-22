@@ -48,6 +48,9 @@ const accountStore = {
         contacts: a.totalContacts || 0,
         wabaId: a.wabaId || '',
         phoneNumberId: a.phoneNumberId || '',
+        channelType: a.channelType || 'cloud_api',
+        canAutoSend: a.canAutoSend !== false,
+        messagingLimit: a.messagingLimit || 0,
         hasToken: !!a.isVerified || a.status === 'connected', // token itself is never sent to the browser
         created: new Date(a.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
       }));
@@ -72,6 +75,7 @@ function initNavigation() {
     templates: 'Templates',
     chatbots: 'Chatbots',
     flows: 'Flows',
+    insights: 'Insights',
     analytics: 'Analytics',
     reports: 'Reports',
     accounts: 'Accounts',
@@ -192,6 +196,9 @@ function statusMeta(status) {
   if (status === 'connected') return { dot: 'green', label: 'Connected' };
   if (status === 'connecting') return { dot: 'yellow', label: 'Connecting…' };
   if (status === 'error') return { dot: 'red', label: 'Connection error' };
+  // Manual channels are used through the operator's own WhatsApp app, so
+  // "offline" would be misleading — there is nothing to connect.
+  if (status === 'manual') return { dot: 'blue', label: 'Manual — you send' };
   return { dot: 'red', label: 'Not connected — add API credentials & test' };
 }
 
@@ -238,12 +245,14 @@ function renderAccountsPage() {
           <span class="account-card-stat-lbl">Messages Sent</span>
         </div>
         <div class="account-card-stat">
-          <span class="account-card-stat-val">${acc.phoneNumberId ? 'Yes' : 'No'}</span>
-          <span class="account-card-stat-lbl">API Credentials</span>
+          <span class="account-card-stat-val">${acc.canAutoSend ? (acc.phoneNumberId ? 'Yes' : 'No') : 'Manual'}</span>
+          <span class="account-card-stat-lbl">${acc.canAutoSend ? 'API Credentials' : 'Channel'}</span>
         </div>
         <div class="account-card-stat">
-          <span class="account-card-stat-val">${escapeHtml(acc.qualityLabel || '—')}</span>
-          <span class="account-card-stat-lbl">Quality</span>
+          <span class="account-card-stat-val">${acc.canAutoSend
+            ? (acc.messagingLimit ? acc.messagingLimit.toLocaleString() : '—')
+            : '—'}</span>
+          <span class="account-card-stat-lbl">${acc.canAutoSend ? 'Limit / 24h' : 'Quality'}</span>
         </div>
       </div>
       <div class="account-card-meta">
@@ -253,7 +262,7 @@ function renderAccountsPage() {
         </div>
       </div>
       <div class="account-card-actions">
-        <button class="btn btn-sm test-account-btn" data-account-id="${acc.id}">Test Connection</button>
+        ${acc.canAutoSend ? `<button class="btn btn-sm test-account-btn" data-account-id="${acc.id}">Test Connection</button>` : ''}
         <button class="btn btn-sm btn-outline edit-account-btn" data-account-id="${acc.id}">Edit</button>
         <button class="btn btn-sm btn-danger-outline remove-account-btn" data-account-id="${acc.id}">Remove</button>
       </div>
@@ -319,8 +328,40 @@ function openModal(account) {
     ? 'Leave blank to keep the current token'
     : 'Paste your permanent access token…';
 
+  const channelSelect = document.getElementById('newAccountChannelType');
+  if (channelSelect) {
+    channelSelect.value = (account && account.channelType) || 'cloud_api';
+    // The channel decides what kind of number this is, so it is fixed once set.
+    channelSelect.disabled = !!account;
+    applyChannelType();
+  }
+
   const title = document.querySelector('#addAccountModal .modal-header h3');
   if (title) title.textContent = account ? 'Edit WhatsApp Account' : 'Connect WhatsApp Account';
+}
+
+/*
+ * A manual channel (WhatsApp Business app / regular WhatsApp) has no API
+ * credentials — registering a number with the Cloud API takes it out of those
+ * apps. Hide the credential step rather than let someone fill in fields the
+ * server will reject.
+ */
+function applyChannelType() {
+  const select = document.getElementById('newAccountChannelType');
+  if (!select) return;
+  const isManual = select.value === 'manual';
+  const step2 = document.getElementById('step2');
+  if (step2) {
+    step2.dataset.skip = isManual ? '1' : '';
+    if (isManual) {
+      ['newAccountPhoneNumberId', 'newAccountToken', 'newAccountWabaId'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+      });
+    }
+  }
+  const stepIndicator = document.querySelectorAll('.modal-step')[1];
+  if (stepIndicator) stepIndicator.style.opacity = isManual ? '0.4' : '';
 }
 
 function closeModal() {
@@ -346,6 +387,15 @@ function setModalStep(step) {
   nextBtn.textContent = step === 3 ? (editingAccountId ? 'Save Changes' : 'Connect Account') : 'Continue';
 }
 
+// Manual channels have no credentials step — skip straight past it.
+function nextModalStep(direction) {
+  const step2 = document.getElementById('step2');
+  const skip2 = step2 && step2.dataset.skip === '1';
+  let next = modalCurrentStep + direction;
+  if (next === 2 && skip2) next += direction;
+  setModalStep(Math.min(3, Math.max(1, next)));
+}
+
 async function finishAddAccount() {
   const name = document.getElementById('newAccountName').value.trim();
   const country = document.getElementById('newAccountCountry').value;
@@ -368,23 +418,33 @@ async function finishAddAccount() {
     '#FF9500': 'orange', '#FF6B6B': 'red', '#1ABC9C': 'teal'
   };
 
+  const channelSelect = document.getElementById('newAccountChannelType');
+  const channelType = channelSelect ? channelSelect.value : 'cloud_api';
+  const isManual = channelType === 'manual';
+
   const payload = {
     name,
     category: categoryVal,
     categoryLabel: categoryText,
     color,
     colorClass: colorMap[color] || 'green',
-    wabaId,
-    phoneNumberId,
   };
-  // Only send a token if the user typed one (blank on edit = keep existing).
-  if (accessToken) payload.accessToken = accessToken;
+  // A manual channel must carry no Cloud API credentials — the server rejects
+  // the combination, since a Cloud API number leaves the WhatsApp apps.
+  if (!isManual) {
+    payload.wabaId = wabaId;
+    payload.phoneNumberId = phoneNumberId;
+    if (accessToken) payload.accessToken = accessToken;
+  }
 
   let result;
   if (editingAccountId) {
     result = await API.updateWAAccount(editingAccountId, payload);
   } else {
-    result = await API.createWAAccount({ ...payload, phone: country + phone.replace(/\s/g, ''), countryCode: country });
+    result = await API.createWAAccount({
+      ...payload, channelType,
+      phone: country + phone.replace(/\s/g, ''), countryCode: country,
+    });
   }
   if (!result.success) return alert(result.message || 'Failed to save account.');
 
@@ -392,7 +452,11 @@ async function finishAddAccount() {
   renderAccountSwitcher();
   renderAccountsPage();
   closeModal();
-  if (phoneNumberId && accessToken) {
+  if (isManual) {
+    if (!editingAccountId) {
+      alert('Manual channel saved. Broadcasts to this number produce click-to-chat links you open and send from your own WhatsApp app.');
+    }
+  } else if (phoneNumberId && accessToken) {
     alert('Account saved. Click "Test Connection" on the account card to verify it with Meta.');
   } else if (!editingAccountId) {
     alert('Account saved. To send real messages, edit it and add your Phone Number ID and Access Token from Meta Business Manager.');
@@ -415,15 +479,18 @@ function initModal() {
 
   nextBtn.addEventListener('click', () => {
     if (modalCurrentStep < 3) {
-      setModalStep(modalCurrentStep + 1);
+      nextModalStep(1);
     } else {
       finishAddAccount();
     }
   });
 
   backBtn.addEventListener('click', () => {
-    if (modalCurrentStep > 1) setModalStep(modalCurrentStep - 1);
+    if (modalCurrentStep > 1) nextModalStep(-1);
   });
+
+  const channelSelect = document.getElementById('newAccountChannelType');
+  if (channelSelect) channelSelect.addEventListener('change', applyChannelType);
 
   // Color swatch selection
   document.querySelectorAll('.color-swatch').forEach(swatch => {
@@ -470,6 +537,10 @@ async function loadDashboardStats() {
   const allDel = document.getElementById('allDeliveryStat');
   if (allDel) allDel.textContent = s.deliveryRate + '%';
 
+  renderConsentStat(s.consent);
+  renderTemplatePerformance(s.templatePerformance);
+  renderSpend(s.spend);
+
   // Sidebar plan meter — real monthly volume (Meta's free tier ≈ 1,000 conversations/month).
   const user = API.getUser();
   const planName = document.getElementById('planName');
@@ -481,6 +552,103 @@ async function loadDashboardStats() {
 
   renderCharts(s);
   fillDashboardLists();
+}
+
+/*
+ * Opt-out rate across the contact list. A rising rate is the earliest warning
+ * that messaging is unwelcome, which is what damages an account's quality
+ * rating with Meta — so it is shown even when it is zero.
+ */
+function renderConsentStat(consent) {
+  const valueEl = document.getElementById('statOptOutRate');
+  const noteEl = document.getElementById('statOptOutNote');
+  if (!valueEl) return;
+  if (!consent || !consent.total) {
+    valueEl.textContent = '—';
+    if (noteEl) { noteEl.textContent = 'no contacts yet'; noteEl.className = 'stat-change'; }
+    return;
+  }
+  valueEl.textContent = consent.optOutRate + '%';
+  if (noteEl) {
+    noteEl.textContent = consent.noConsent
+      ? `${consent.noConsent} without consent`
+      : `${consent.optedIn} opted in`;
+    noteEl.className = 'stat-change' + (consent.noConsent ? ' down' : ' up');
+  }
+}
+
+/*
+ * Top templates by read rate over the last 30 days, from real delivery
+ * receipts. Shows nothing rather than inventing numbers when there is no data.
+ */
+function renderTemplatePerformance(rows) {
+  const el = document.getElementById('templatePerf');
+  if (!el) return;
+  if (!rows || !rows.length) {
+    el.innerHTML = `<div style="padding:24px 8px;text-align:center;color:#86868b;font-size:13px;line-height:1.6;">
+      No template sends in the last 30 days yet.<br>Read rates appear here once broadcasts go out.
+    </div>`;
+    return;
+  }
+  const colors = ['#25D366', '#34B7F1', '#9B59B6', '#FFC107', '#FF6B6B'];
+  el.innerHTML = rows.map((r, i) => `
+    <div class="template-perf-item">
+      <div class="template-perf-info">
+        <span class="template-perf-name">${escapeHtml(r.name)}</span>
+        <span class="template-perf-stat">${r.readRate}% read · ${r.delivered.toLocaleString()} delivered</span>
+      </div>
+      <div class="mini-bar"><div class="mini-bar-fill" style="width:${Math.min(r.readRate, 100)}%;background:${colors[i % colors.length]}"></div></div>
+    </div>`).join('');
+}
+
+/*
+ * Estimated WhatsApp spend this month, by billing category.
+ *
+ * Service messages (free-form replies inside the 24h window) are free until
+ * 1 Oct 2026 and billable after, so the banner counts down to that change —
+ * it is the single most expensive surprise on this platform right now.
+ */
+function renderSpend(spend) {
+  const el = document.getElementById('spendPanel');
+  if (!el || !spend) return;
+
+  const rows = (spend.lines || []).filter(l => l.count > 0);
+  const notice = !spend.serviceBillingActive && spend.daysUntilServiceBilling > 0 && spend.counts.service
+    ? `<div style="margin-bottom:12px;padding:10px 12px;background:#FFF4E5;border:1px solid #FFE08A;border-radius:10px;font-size:12px;line-height:1.5;color:#6b5700;">
+         <strong>${spend.daysUntilServiceBilling} day${spend.daysUntilServiceBilling === 1 ? '' : 's'}</strong>
+         until free-form service replies become billable (1 Oct 2026). You have sent
+         <strong>${spend.counts.service.toLocaleString()}</strong> this month — those would be charged
+         above the first ${spend.serviceFreeAllowance.toLocaleString()}/number/month.
+       </div>` : '';
+
+  if (!rows.length) {
+    el.innerHTML = notice + `<div style="padding:16px 4px;color:#86868b;font-size:13px;">No billable messages this month.</div>`;
+    return;
+  }
+
+  el.innerHTML = notice + `
+    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <thead><tr style="text-align:left;color:#86868b;font-size:11px;text-transform:uppercase;letter-spacing:.04em;">
+        <th style="padding:6px 0;">Category</th><th style="text-align:right;">Sent</th>
+        <th style="text-align:right;">Billable</th><th style="text-align:right;">Est. cost</th>
+      </tr></thead>
+      <tbody>
+        ${rows.map(l => `
+          <tr style="border-top:1px solid #f0f0f4;">
+            <td style="padding:8px 0;text-transform:capitalize;">${escapeHtml(l.category)}</td>
+            <td style="text-align:right;">${l.count.toLocaleString()}</td>
+            <td style="text-align:right;color:${l.billableCount ? '#1d1d1f' : '#86868b'}">${l.billableCount.toLocaleString()}</td>
+            <td style="text-align:right;">$${l.cost.toFixed(2)}</td>
+          </tr>`).join('')}
+        <tr style="border-top:2px solid #e8e8ed;font-weight:700;">
+          <td style="padding:8px 0;">Total</td><td></td><td></td>
+          <td style="text-align:right;">$${(spend.total || 0).toFixed(2)}</td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="margin:10px 0 0;font-size:11px;color:#a1a1a6;line-height:1.5;">
+      Indicative only — Meta's rates vary by recipient market. Set WA_RATE_* in your environment to match your own pricing.
+    </p>`;
 }
 
 // Fill the "Campaign Performance" and "Active Templates" dashboard cards with real data.
@@ -662,8 +830,3 @@ document.querySelectorAll('.convo-item-full').forEach(item => {
   });
 });
 
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
-}

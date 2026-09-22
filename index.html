@@ -101,6 +101,10 @@
 
       <div class="nav-section">
         <span class="nav-label">Analytics</span>
+        <a href="#" class="nav-item" data-page="insights">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 100 20 10 10 0 000-20z"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+          <span>Insights</span>
+        </a>
         <a href="#" class="nav-item" data-page="analytics">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
           <span>Analytics</span>
@@ -145,7 +149,7 @@
           <a href="/profile" class="user-name" style="text-decoration:none">Demo User</a>
           <span class="user-role">Admin</span>
         </div>
-        <button class="user-menu-btn" title="Sign out" onclick="API.logout()">
+        <button class="user-menu-btn" title="Sign out" data-action="logout">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         </button>
       </div>
@@ -397,202 +401,78 @@
           <div class="convo-sidebar-header">
             <div class="convo-search">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <input type="text" placeholder="Search conversations…">
+              <input type="text" id="convoSearch" placeholder="Search conversations…">
             </div>
             <div class="convo-filters">
-              <button class="chip active">All</button>
-              <button class="chip">Unread</button>
-              <button class="chip">Assigned</button>
+              <button class="chip active" data-convo-filter="all">All</button>
+              <button class="chip" data-convo-filter="open">Window open</button>
             </div>
           </div>
-          <div class="convo-list-full">
-            <div class="convo-item-full active">
-              <div class="convo-avatar" style="background:#25D366">RK</div>
-              <div class="convo-body">
-                <div class="convo-top">
-                  <span class="convo-name">Rahul Kumar</span>
-                  <span class="convo-time">2m</span>
-                </div>
-                <p class="convo-msg">Hi, I'd like to know about your enterprise plan…</p>
-                <div class="convo-tags">
-                  <span class="mini-tag">Sales</span>
-                  <span class="mini-tag">Hot Lead</span>
-                </div>
-              </div>
-              <span class="convo-badge unread">3</span>
-            </div>
-            <div class="convo-item-full">
-              <div class="convo-avatar" style="background:#34B7F1">PS</div>
-              <div class="convo-body">
-                <div class="convo-top">
-                  <span class="convo-name">Priya Sharma</span>
-                  <span class="convo-time">15m</span>
-                </div>
-                <p class="convo-msg">Thank you! The integration works perfectly now.</p>
-                <div class="convo-tags">
-                  <span class="mini-tag">Support</span>
-                </div>
-              </div>
-            </div>
-            <div class="convo-item-full">
-              <div class="convo-avatar" style="background:#FF6B6B">AM</div>
-              <div class="convo-body">
-                <div class="convo-top">
-                  <span class="convo-name">Arjun Mehta</span>
-                  <span class="convo-time">1h</span>
-                </div>
-                <p class="convo-msg">Can you send me the invoice for last month?</p>
-                <div class="convo-tags">
-                  <span class="mini-tag">Billing</span>
-                </div>
-              </div>
-              <span class="convo-badge unread">1</span>
-            </div>
-            <div class="convo-item-full">
-              <div class="convo-avatar" style="background:#FFC107">NP</div>
-              <div class="convo-body">
-                <div class="convo-top">
-                  <span class="convo-name">Neha Patel</span>
-                  <span class="convo-time">2h</span>
-                </div>
-                <p class="convo-msg">The chatbot flow is live. Please review.</p>
-              </div>
-            </div>
-            <div class="convo-item-full">
-              <div class="convo-avatar" style="background:#9B59B6">VR</div>
-              <div class="convo-body">
-                <div class="convo-top">
-                  <span class="convo-name">Vikram Rao</span>
-                  <span class="convo-time">3h</span>
-                </div>
-                <p class="convo-msg">Scheduled broadcast confirmed.</p>
-              </div>
-            </div>
-            <div class="convo-item-full">
-              <div class="convo-avatar" style="background:#1ABC9C">SG</div>
-              <div class="convo-body">
-                <div class="convo-top">
-                  <span class="convo-name">Sneha Gupta</span>
-                  <span class="convo-time">5h</span>
-                </div>
-                <p class="convo-msg">When will the new feature be ready?</p>
-              </div>
-            </div>
+          <!-- Filled from /api/conversations — real inbound/outbound threads. -->
+          <div class="convo-list-full" id="convoList">
+            <div style="padding:24px 16px;text-align:center;color:#86868b;font-size:13px;">Loading…</div>
           </div>
         </div>
 
-        <div class="chat-main">
+        <div class="chat-main" id="chatMain">
           <div class="chat-header">
             <div class="chat-user">
-              <div class="convo-avatar" style="background:#25D366">RK</div>
+              <!-- Only shown on phones, where the list and thread share one pane. -->
+              <button class="chat-back-btn" id="chatBackBtn" aria-label="Back to conversations">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+              </button>
+              <div class="convo-avatar" id="chatAvatar" style="background:#25D366">—</div>
               <div>
-                <span class="chat-user-name">Rahul Kumar</span>
-                <span class="chat-user-status">Online · +91 98765 43210</span>
+                <span class="chat-user-name" id="chatUserName">Select a conversation</span>
+                <span class="chat-user-status" id="chatUserStatus">Messages appear here once a customer writes to you</span>
               </div>
-            </div>
-            <div class="chat-actions">
-              <button class="topbar-btn" title="Voice call">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
-              </button>
-              <button class="topbar-btn" title="Assign agent">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-              </button>
-              <button class="topbar-btn" title="More options">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
-              </button>
             </div>
           </div>
 
-          <div class="chat-messages">
-            <div class="chat-date">Today</div>
-            <div class="message incoming">
-              <div class="message-bubble">
-                <p>Hi, I'd like to know about your enterprise plan pricing. We have around 500 agents.</p>
-                <span class="message-time">10:24 AM</span>
-              </div>
-            </div>
-            <div class="message outgoing">
-              <div class="message-bubble">
-                <p>Hello Rahul! Thanks for reaching out. Our Enterprise plan starts at $299/month for up to 50 agents, with custom pricing for larger teams.</p>
-                <span class="message-time">10:25 AM <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#34B7F1" stroke-width="2"><polyline points="1 12 5 16 12 6"/><polyline points="7 12 11 16 20 6"/></svg></span>
-              </div>
-            </div>
-            <div class="message incoming">
-              <div class="message-bubble">
-                <p>That sounds good. Can you share a detailed proposal? Also, do you support multi-language templates?</p>
-                <span class="message-time">10:26 AM</span>
-              </div>
-            </div>
-            <div class="message outgoing">
-              <div class="message-bubble">
-                <p>Absolutely! We support 60+ languages for message templates. I'll prepare a detailed proposal and share it with you shortly.</p>
-                <span class="message-time">10:27 AM <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#34B7F1" stroke-width="2"><polyline points="1 12 5 16 12 6"/><polyline points="7 12 11 16 20 6"/></svg></span>
-              </div>
-            </div>
-            <div class="message incoming">
-              <div class="message-bubble">
-                <p>Great, also interested in the chatbot builder and API integration capabilities.</p>
-                <span class="message-time">10:30 AM</span>
-              </div>
+          <div class="chat-messages" id="chatMessages">
+            <div style="padding:40px 16px;text-align:center;color:#86868b;font-size:13px;line-height:1.7;">
+              No conversation selected.<br>
+              Conversations start when a customer messages one of your Cloud API numbers.
             </div>
           </div>
+
+          <!-- The 24h customer service window decides whether free-form is legal. -->
+          <div id="chatWindowNotice" style="display:none;padding:10px 16px;font-size:12px;line-height:1.5;border-top:1px solid #e8e8ed;"></div>
 
           <div class="chat-input">
-            <button class="chat-input-btn" title="Attach file">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
-            </button>
-            <button class="chat-input-btn" title="Use template">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-            </button>
-            <input type="text" placeholder="Type a message…" class="chat-text-input">
-            <button class="chat-input-btn" title="Emoji">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
-            </button>
-            <button class="send-btn" title="Send">
+            <input type="text" id="chatText" placeholder="Type a reply…" class="chat-text-input" disabled>
+            <button class="chat-send-btn" id="chatSendBtn" title="Send" disabled>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
             </button>
           </div>
         </div>
+      </div>
+    </div>
 
-        <div class="contact-panel">
-          <div class="contact-panel-header">
-            <h3>Contact Details</h3>
-          </div>
-          <div class="contact-info">
-            <div class="contact-avatar-lg" style="background:#25D366">RK</div>
-            <h4>Rahul Kumar</h4>
-            <p class="contact-phone">+91 98765 43210</p>
-            <div class="contact-tags">
-              <span class="tag tag-green">Hot Lead</span>
-              <span class="tag tag-blue">Enterprise</span>
-            </div>
-          </div>
-          <div class="contact-meta">
-            <div class="meta-item">
-              <span class="meta-label">Email</span>
-              <span class="meta-value">rahul@example.com</span>
-            </div>
-            <div class="meta-item">
-              <span class="meta-label">Company</span>
-              <span class="meta-value">TechCorp India</span>
-            </div>
-            <div class="meta-item">
-              <span class="meta-label">Location</span>
-              <span class="meta-value">Mumbai, India</span>
-            </div>
-            <div class="meta-item">
-              <span class="meta-label">First Contact</span>
-              <span class="meta-value">May 15, 2026</span>
-            </div>
-            <div class="meta-item">
-              <span class="meta-label">Assigned To</span>
-              <span class="meta-value">Sales Team</span>
-            </div>
-          </div>
-          <div class="contact-notes">
-            <h5>Notes</h5>
-            <p>Interested in enterprise plan for 500+ agents. Needs multi-language support and API integration. Follow up with proposal by June 6.</p>
-          </div>
+    <!-- Insights Page: what each number means and what it does to the business -->
+    <div class="page" id="page-insights">
+      <div class="insights-head" id="insightsHead">
+        <div style="padding:20px 0;color:#86868b;font-size:13px;">Loading…</div>
+      </div>
+      <div class="insights-grid" id="insightsGrid"></div>
+      <p style="margin:18px 2px 0;font-size:12px;color:#a1a1a6;line-height:1.6;max-width:760px;">
+        These are your own sending statistics, worked out from the messages this account has sent and
+        received. Tap any card to see what it means and what it does to your business.
+      </p>
+    </div>
+
+    <!-- Explain window: opened from an Insights card -->
+    <div class="modal-overlay" id="insightModal">
+      <div class="modal insight-modal">
+        <div class="modal-header">
+          <h3 id="insightModalTitle">Signal</h3>
+          <button class="modal-close" id="insightModalClose" aria-label="Close">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div class="modal-body" id="insightModalBody"></div>
+        <div class="modal-footer">
+          <button class="btn" id="insightModalDone">Got it</button>
         </div>
       </div>
     </div>
@@ -635,10 +515,10 @@
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
           </div>
           <div class="stat-body">
-            <span class="stat-value">0.8%</span>
+            <span class="stat-value" id="statOptOutRate">—</span>
             <span class="stat-label">Opt-out Rate</span>
           </div>
-          <span class="stat-change down">-0.3%</span>
+          <span class="stat-change" id="statOptOutNote"></span>
         </div>
       </div>
 
@@ -660,46 +540,22 @@
           <div class="card-header">
             <h3>Top Performing Templates</h3>
           </div>
-          <div class="template-perf">
-            <div class="template-perf-item">
-              <div class="template-perf-info">
-                <span class="template-perf-name">welcome_message</span>
-                <span class="template-perf-stat">82% open rate</span>
-              </div>
-              <div class="mini-bar"><div class="mini-bar-fill" style="width:82%;background:#25D366"></div></div>
-            </div>
-            <div class="template-perf-item">
-              <div class="template-perf-info">
-                <span class="template-perf-name">order_confirmation</span>
-                <span class="template-perf-stat">76% open rate</span>
-              </div>
-              <div class="mini-bar"><div class="mini-bar-fill" style="width:76%;background:#34B7F1"></div></div>
-            </div>
-            <div class="template-perf-item">
-              <div class="template-perf-info">
-                <span class="template-perf-name">feedback_request</span>
-                <span class="template-perf-stat">71% open rate</span>
-              </div>
-              <div class="mini-bar"><div class="mini-bar-fill" style="width:71%;background:#9B59B6"></div></div>
-            </div>
-            <div class="template-perf-item">
-              <div class="template-perf-info">
-                <span class="template-perf-name">appointment_reminder</span>
-                <span class="template-perf-stat">69% open rate</span>
-              </div>
-              <div class="mini-bar"><div class="mini-bar-fill" style="width:69%;background:#FFC107"></div></div>
-            </div>
-            <div class="template-perf-item">
-              <div class="template-perf-info">
-                <span class="template-perf-name">promo_offer</span>
-                <span class="template-perf-stat">58% open rate</span>
-              </div>
-              <div class="mini-bar"><div class="mini-bar-fill" style="width:58%;background:#FF6B6B"></div></div>
-            </div>
+          <!-- Filled from /api/dashboard/stats — real read rates, last 30 days. -->
+          <div class="template-perf" id="templatePerf">
+            <div style="padding:24px 8px;text-align:center;color:#86868b;font-size:13px;">Loading…</div>
+          </div>
+        </div>
+        <div class="chart-card">
+          <div class="card-header">
+            <h3>Estimated Spend (this month)</h3>
+          </div>
+          <div style="padding:0 20px 20px;" id="spendPanel">
+            <div style="padding:24px 8px;text-align:center;color:#86868b;font-size:13px;">Loading…</div>
           </div>
         </div>
       </div>
     </div>
+
     <!-- Contacts Page -->
     <div class="page" id="page-contacts">
       <div class="card">
@@ -713,10 +569,17 @@
             <input type="file" id="csvFileInput" accept=".csv,text/csv" style="display:none">
           </div>
         </div>
+        <!-- Shown only when contacts predate consent tracking. -->
+        <div id="consentBackfillBanner" style="display:none;margin:0 24px 12px;padding:12px 16px;background:#FFF8E6;border:1px solid #FFE08A;border-radius:12px;font-size:13px;line-height:1.6;color:#6b5700;">
+          <strong id="consentBackfillCount"></strong>
+          have no recorded opt-in, so broadcasts will not reach them. WhatsApp requires demonstrable
+          consent before a business messages someone.
+          <button class="btn btn-sm" id="consentBackfillBtn" style="margin-left:8px;">Record consent for these</button>
+        </div>
         <div style="overflow-x:auto;">
           <table class="data-table">
             <thead>
-              <tr><th>Name</th><th>Phone</th><th>Email</th><th>Tags</th><th>Status</th><th></th></tr>
+              <tr><th>Name</th><th>Phone</th><th>Email</th><th>Tags</th><th>Consent</th><th></th></tr>
             </thead>
             <tbody id="contactsTableBody">
               <tr><td colspan="6" style="text-align:center;padding:30px;color:#86868b;">Loading…</td></tr>
@@ -731,8 +594,15 @@
       <div class="card">
         <div class="card-header">
           <h3>Message Templates</h3>
-          <button class="btn btn-sm" id="newTemplateBtn">+ New Template</button>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-sm btn-secondary" data-sync-templates="1">Sync from Meta</button>
+            <button class="btn btn-sm" id="newTemplateBtn">+ New Template</button>
+          </div>
         </div>
+        <p style="margin:0 24px 4px;font-size:12px;color:#86868b;line-height:1.5;">
+          Templates are created and approved in Meta Business Manager. Only APPROVED templates can be
+          sent to contacts who have not messaged you in the last 24 hours. Sync to pull their current status.
+        </p>
         <div style="overflow-x:auto;">
           <table class="data-table">
             <thead>
@@ -877,6 +747,18 @@
 
             <div class="modal-step-content active" id="step1">
               <div class="form-group">
+                <label class="form-label">Channel Type</label>
+                <select class="form-select full" id="newAccountChannelType">
+                  <option value="cloud_api">WhatsApp Business Platform (Cloud API) — this app sends automatically</option>
+                  <option value="manual">WhatsApp Business app or regular WhatsApp — you send from your phone</option>
+                </select>
+                <small style="color:#86868b;font-size:12px;line-height:1.5;display:block;margin-top:6px;" id="channelTypeHint">
+                  A number registered to the Cloud API is removed from the WhatsApp Business app and regular
+                  WhatsApp — one number can only be on one of them. Meta publishes no API for the apps, so
+                  manual channels get contact management and ready-made chat links instead of automated sending.
+                </small>
+              </div>
+              <div class="form-group">
                 <label class="form-label">Account Name</label>
                 <input type="text" class="form-input" id="newAccountName" placeholder="e.g. Sales Team, Support Line…">
               </div>
@@ -968,27 +850,14 @@
 
   </main>
 
+  <script src="js/util.js"></script>
   <script src="js/api.js"></script>
-  <script>
-    // Auth guard — redirect to login if not authenticated
-    if (!API.isLoggedIn()) {
-      window.location.href = '/login';
-    } else {
-      // Populate user info in sidebar
-      const u = API.getUser();
-      if (u) {
-        const nameEl = document.querySelector('.user-name');
-        const roleEl = document.querySelector('.user-role');
-        const avatarEl = document.querySelector('.user-avatar');
-        if (nameEl) nameEl.textContent = u.name;
-        if (roleEl) roleEl.textContent = u.role === 'admin' ? 'Admin' : 'Member';
-        if (avatarEl) avatarEl.textContent = u.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
-      }
-    }
-  </script>
-  <script src="js/vendor/chart.umd.min.js"></script>
+  <script src="js/page-dashboard.js"></script>
+<script src="js/vendor/chart.umd.min.js"></script>
   <script src="js/dashboard.js"></script>
   <script src="js/entities.js"></script>
+  <script src="js/conversations.js"></script>
+  <script src="js/insights.js"></script>
   <script src="js/quick-actions.js"></script>
 </body>
 </html>

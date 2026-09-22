@@ -41,8 +41,12 @@ app.use(helmet({
     useDefaults: true,
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
-      // Fonts are now fully self-hosted — no third-party CDN allowed.
+      // All page scripts are external files (js/page-*.js), so inline script
+      // is forbidden outright — that is what makes CSP worth having against XSS.
+      scriptSrc: ["'self'"],
+      scriptSrcAttr: ["'none'"],   // blocks onclick="" and friends
+      // Inline STYLE is still allowed: the markup carries style="" attributes
+      // throughout. Scripts are the XSS vector that matters here.
       styleSrc: ["'self'", "'unsafe-inline'"],
       fontSrc: ["'self'"],
       imgSrc: ["'self'", 'data:', 'blob:'],
@@ -117,7 +121,9 @@ app.use('/api/accounts', apiLimiter, require('./routes/accounts'));
 app.use('/api/contacts', apiLimiter, require('./routes/contacts'));
 app.use('/api/templates', apiLimiter, require('./routes/templates'));
 app.use('/api/broadcasts', apiLimiter, require('./routes/broadcasts'));
+app.use('/api/conversations', apiLimiter, require('./routes/conversations'));
 app.use('/api/dashboard', apiLimiter, require('./routes/dashboard'));
+app.use('/api/insights', apiLimiter, require('./routes/insights'));
 
 // Meta webhook — no auth (Meta calls it), generous limit (delivery receipts burst).
 const webhookLimiter = rateLimit({

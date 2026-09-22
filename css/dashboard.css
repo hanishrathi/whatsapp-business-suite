@@ -1501,8 +1501,24 @@ input, select, textarea { font-family: inherit; }
   .charts-row { grid-template-columns: 1fr; }
   .search-box { width: 180px; }
   .quick-actions { grid-template-columns: repeat(2, 1fr); }
-  .conversations-layout { grid-template-columns: 1fr; }
-  .convo-sidebar { display: none; }
+
+  /* The layout bleeds to the screen edge, so the negative margin has to match
+     the page padding at this breakpoint — 28px here pushed the page 24px wider
+     than the viewport. */
+  .conversations-layout {
+    grid-template-columns: 1fr;
+    margin: -16px;
+    height: calc(100vh - var(--topbar-h) - 32px);
+  }
+  /*
+   * One pane at a time on a phone: the list, or the thread once one is picked.
+   * Previously the list was hidden outright, which left no way to choose a
+   * conversation on mobile at all.
+   */
+  .convo-sidebar { display: flex; }
+  .conversations-layout.thread-open .convo-sidebar { display: none; }
+  .chat-main { display: none; }
+  .conversations-layout.thread-open .chat-main { display: flex; flex-direction: column; }
 }
 
 @media (max-width: 480px) {
@@ -1529,3 +1545,177 @@ input, select, textarea { font-family: inherit; }
 .status-pill.draft, .status-pill.pending, .status-pill.scheduled { background: rgba(255,149,0,0.12); color:#c2740a; }
 .status-pill.blocked, .status-pill.rejected, .status-pill.failed, .status-pill.unsubscribed { background: rgba(255,59,48,0.1); color:#d13b30; }
 .entity-empty { text-align:center; padding:30px; color:#86868b; }
+
+/* ========== RESPONSIVE OVERFLOW GUARDS ==========
+ * Flex and grid items default to min-width:auto, meaning they refuse to shrink
+ * below their content's intrinsic width. With a wide table or a long stat value
+ * inside, that propagated all the way up and made the whole page wider than the
+ * viewport on phones. Allowing these containers to shrink is what lets the
+ * scroll happen inside the table wrapper, where it belongs.
+ */
+.main { min-width: 0; }
+.page { min-width: 0; }
+.card { min-width: 0; }
+.stats-grid > *, .analytics-grid > *, .charts-row > *,
+.bottom-row > *, .bottom-cards > *, .quick-actions > * { min-width: 0; }
+.stat-card, .chart-card, .stat-body { min-width: 0; }
+.stat-value, .stat-label { min-width: 0; overflow-wrap: anywhere; }
+.conversations-layout > * { min-width: 0; }
+.chat-main, .chat-header, .chat-messages, .chat-input, .convo-sidebar { min-width: 0; }
+.convo-body, .convo-msg, .convo-name { min-width: 0; overflow-wrap: anywhere; }
+/* Long words and pasted URLs in a message must wrap, not widen the pane. */
+.chat-bubble p { overflow-wrap: anywhere; }
+
+/* Wide tables scroll inside their own container instead of the page. */
+.data-table { width: 100%; }
+.card > div[style*="overflow-x"] { max-width: 100%; }
+
+/* Back button for the one-pane mobile conversation view.
+   Declared here, AFTER the breakpoint blocks above, so its own media query
+   below is the last word — otherwise `display:none` wins at equal specificity
+   and the button is unreachable on a phone. */
+.chat-back-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text, #1d1d1f);
+  /* 44px is the smallest reliably tappable target (Apple HIG / Material). */
+  min-width: 44px;
+  min-height: 44px;
+  margin-right: 2px;
+  border-radius: 10px;
+}
+.chat-back-btn:hover { background: rgba(0,0,0,0.05); }
+
+@media (max-width: 768px) {
+  .chat-back-btn { display: inline-flex; }
+}
+
+/* ---- Touch target sizes ----
+   Icon-only controls were as small as 18x18, which is well under the ~44px
+   minimum for a fingertip. Padding them out costs nothing on desktop. */
+.chat-send-btn,
+.chat-input-btn,
+.menu-toggle,
+.modal-close,
+.topbar-btn {
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+@media (min-width: 769px) {
+  /* Desktop has a pointer, so keep the denser original sizing there. */
+  .menu-toggle, .topbar-btn, .modal-close { min-width: 36px; min-height: 36px; }
+}
+.row-action-btn { min-height: 36px; }
+@media (max-width: 768px) {
+  .row-action-btn { min-height: 44px; padding: 8px 10px; }
+}
+
+/* Nothing may cause a sideways scroll of the document itself. */
+html, body { max-width: 100%; overflow-x: hidden; }
+
+/* ========== INSIGHTS ==========
+   Status colour carries the meaning here, so it is always paired with a text
+   label ("Healthy" / "Needs action") rather than relying on colour alone. */
+.insight-summary {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  background: var(--bg-card, #fff);
+  border: 1px solid var(--border, #e8e8ed);
+  border-radius: 16px;
+  padding: 18px 20px;
+  margin-bottom: 18px;
+}
+.insight-summary-dot { width: 12px; height: 12px; border-radius: 50%; margin-top: 6px; flex: 0 0 auto; }
+.insight-summary h3 { margin: 0 0 4px; font-size: 17px; }
+.insight-summary p { margin: 0 0 6px; color: #3a3a3c; font-size: 14px; line-height: 1.6; }
+.insight-period { font-size: 12px; color: #86868b; }
+
+.insights-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+}
+.insight-card {
+  text-align: left;
+  background: var(--bg-card, #fff);
+  border: 1px solid var(--border, #e8e8ed);
+  border-left: 4px solid #d2d2d7;
+  border-radius: 14px;
+  padding: 16px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  min-width: 0;
+  transition: box-shadow .15s ease, transform .15s ease;
+}
+.insight-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.07); transform: translateY(-1px); }
+.insight-card:focus-visible { outline: 2px solid #34B7F1; outline-offset: 2px; }
+.insight-card.good  { border-left-color: #25D366; }
+.insight-card.watch { border-left-color: #FF9500; }
+.insight-card.act   { border-left-color: #FF3B30; }
+
+.insight-card-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
+.insight-card-label { font-size: 13px; color: #6e6e73; font-weight: 600; }
+.insight-badge { font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 20px; white-space: nowrap; }
+.insight-badge.good  { background: rgba(37,211,102,.12); color: #1a8a47; }
+.insight-badge.watch { background: rgba(255,149,0,.14);  color: #b06a00; }
+.insight-badge.act   { background: rgba(255,59,48,.12);  color: #d13b30; }
+
+.insight-card-value { font-size: 24px; font-weight: 800; letter-spacing: -.02em; margin-bottom: 4px; overflow-wrap: anywhere; }
+.insight-card-sub { font-size: 12px; color: #86868b; line-height: 1.5; min-height: 32px; overflow-wrap: anywhere; }
+.insight-card-more { margin-top: 10px; font-size: 12px; font-weight: 600; color: #34B7F1; }
+
+/* ---- explain window ---- */
+.insight-modal { max-width: 560px; }
+.insight-modal .modal-body { max-height: 65vh; overflow-y: auto; padding: 20px 24px; }
+
+.insight-detail-value {
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 18px;
+  background: #f5f5f7;
+}
+.insight-detail-value.good  { background: rgba(37,211,102,.08); }
+.insight-detail-value.watch { background: rgba(255,149,0,.10); }
+.insight-detail-value.act   { background: rgba(255,59,48,.08); }
+.insight-detail-value strong { display: block; font-size: 26px; font-weight: 800; letter-spacing: -.02em; }
+.insight-detail-value span { display: block; font-size: 13px; color: #6e6e73; margin-top: 2px; }
+
+.insight-block { margin-bottom: 18px; }
+.insight-block h4 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: #86868b;
+}
+.insight-block p { margin: 0 0 6px; font-size: 14px; line-height: 1.65; color: #1d1d1f; }
+.insight-block.action { background: rgba(255,149,0,.07); border-radius: 12px; padding: 12px 14px; }
+.insight-block.ok     { background: rgba(37,211,102,.07); border-radius: 12px; padding: 12px 14px; }
+
+.insight-reason { border-top: 1px solid #f0f0f4; padding: 10px 0; }
+.insight-reason:first-of-type { border-top: none; }
+.insight-reason-top { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; margin-bottom: 4px; }
+.insight-reason p { font-size: 13px; color: #3a3a3c; margin: 0 0 3px; line-height: 1.55; }
+.insight-reason-cost, .insight-reason-fix { color: #6e6e73 !important; }
+.insight-reason em { color: #86868b; font-style: normal; font-weight: 600; }
+
+.insight-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.insight-table th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #86868b; padding-bottom: 6px; }
+.insight-table td { padding: 7px 0; border-top: 1px solid #f0f0f4; }
+.insight-table td:not(:first-child), .insight-table th:not(:first-child) { text-align: right; }
+.insight-note { font-size: 11px; color: #a1a1a6; margin-top: 8px; line-height: 1.5; }
+
+@media (max-width: 768px) {
+  .insights-grid { grid-template-columns: 1fr; }
+  .insight-modal .modal-body { max-height: 70vh; }
+  .insight-card { min-height: 44px; }
+}

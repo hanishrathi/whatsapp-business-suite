@@ -72,8 +72,13 @@ describe('Hardening: cross-tenant refs & status validation', () => {
 
   test('broadcast status cannot be forced to "sent"', async () => {
     const token = await verifiedToken('ht3@e.com', '+919000002003');
+    // A draft attached to a manual channel may carry free-form text — that is
+    // the one case where no template is required, since the operator sends it.
+    const acc = await request(app).post('/api/accounts').set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Shop', phone: '+919000002093', channelType: 'manual' });
     const create = await request(app).post('/api/broadcasts').set('Authorization', `Bearer ${token}`)
-      .send({ name: 'B', message: 'hi' });
+      .send({ name: 'B', message: 'hi', accountId: acc.body.account._id });
+    expect(create.status).toBe(201);
     const res = await request(app).put(`/api/broadcasts/${create.body.broadcast._id}`)
       .set('Authorization', `Bearer ${token}`).send({ status: 'sent' });
     expect(res.status).toBe(400);
@@ -88,13 +93,20 @@ describe('Hardening: cross-tenant refs & status validation', () => {
 });
 
 describe('Broadcasts CRUD', () => {
-  test('audience count reflects active contacts', async () => {
+  test('audience count reflects opted-in contacts only', async () => {
     const token = await verifiedToken('b2@e.com', '+919000000006');
-    await request(app).post('/api/contacts').set('Authorization', `Bearer ${token}`).send({ name: 'C1', phone: '+919833333333' });
-    await request(app).post('/api/contacts').set('Authorization', `Bearer ${token}`).send({ name: 'C2', phone: '+919844444444' });
-    const create = await request(app).post('/api/broadcasts').set('Authorization', `Bearer ${token}`)
-      .send({ name: 'Blast', message: 'Hello!' });
+    const auth = r => r.set('Authorization', `Bearer ${token}`);
+    await auth(request(app).post('/api/contacts')).send({ name: 'C1', phone: '+919833333333', optInSource: 'web form' });
+    await auth(request(app).post('/api/contacts')).send({ name: 'C2', phone: '+919844444444', optInSource: 'web form' });
+    // No consent recorded — must not be counted.
+    await auth(request(app).post('/api/contacts')).send({ name: 'C3', phone: '+919855554444' });
+
+    const acc = await auth(request(app).post('/api/accounts'))
+      .send({ name: 'Shop', phone: '+919000000096', channelType: 'manual' });
+    const create = await auth(request(app).post('/api/broadcasts'))
+      .send({ name: 'Blast', message: 'Hello!', accountId: acc.body.account._id });
     expect(create.status).toBe(201);
     expect(create.body.broadcast.audienceCount).toBe(2);
+    expect(create.body.excluded).toBe(1);
   });
 });

@@ -4,6 +4,7 @@ const waAccounts = require('../data/whatsappAccounts');
 const { protect, requireVerified } = require('../middleware/auth');
 const { encrypt } = require('../utils/crypto');
 const wa = require('../utils/whatsapp');
+const health = require('../data/healthSnapshots');
 const { logAction } = require('../utils/audit');
 
 const MAX_ACCOUNTS = parseInt(process.env.MAX_WHATSAPP_ACCOUNTS || '25', 10);
@@ -49,6 +50,21 @@ router.post('/', protect, requireVerified, (req, res) => {
     if (!name || !phone) return res.status(400).json({ success: false, message: 'Account name and phone number are required.' });
     if (color && !/^#([0-9A-Fa-f]{6})$/.test(color)) return res.status(400).json({ success: false, message: 'Invalid color code. Use hex format like #25D366.' });
     if (!isValidPhoneNumberId(phoneNumberId)) return res.status(400).json({ success: false, message: 'Invalid phone number ID.' });
+    if (!wa.isValidE164(phone)) {
+      return res.status(400).json({ success: false, message: 'Enter the number in international format with country code (e.g. +91 98765 43210).' });
+    }
+
+    const channelType = waAccounts.CHANNEL_TYPES.includes(req.body.channelType) ? req.body.channelType : 'cloud_api';
+    // A Cloud API number is registered to the WhatsApp Business Platform and
+    // cannot also run in the WhatsApp Business app — refuse the impossible setup
+    // rather than let it fail silently at send time.
+    if (channelType === 'manual' && (phoneNumberId || accessToken || wabaId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'A WhatsApp Business app / regular WhatsApp number cannot have Cloud API credentials — registering a number to the Cloud API removes it from those apps. Leave the API fields blank, or add it as a Cloud API account instead.',
+        code: 'CHANNEL_CONFLICT',
+      });
+    }
 
     if (waAccounts.findActiveByPhone(req.user._id, phone)) {
       return res.status(409).json({ success: false, message: 'This phone number is already connected.' });
@@ -62,18 +78,24 @@ router.post('/', protect, requireVerified, (req, res) => {
         color: color || '#25D366', colorClass: colorClass || 'green',
         wabaId: wabaId || '', phoneNumberId: phoneNumberId || '',
         accessToken: accessToken ? encrypt(accessToken) : '',   // F1: encrypt at rest
-        status: wabaId ? 'connecting' : 'offline', isVerified: false, // F9: no fake verify
+        // Manual channels are operator-driven, so they are 'manual' rather than
+        // offline/connecting — there is nothing to connect to.
+        status: channelType === 'manual' ? 'manual' : (wabaId ? 'connecting' : 'offline'),
+        isVerified: false, // F9: no fake verify
+        channelType,
       });
     } catch (err) {
       if (err.code === 11000 || /UNIQUE/i.test(err.message)) return res.status(409).json({ success: false, message: 'This phone number is already connected.' });
       throw err;
     }
 
-    logAction(req, 'whatsapp_account.create', { targetId: account._id, meta: { name: account.name, phone: account.phone } });
+    logAction(req, 'whatsapp_account.create', { targetId: account._id, meta: { name: account.name, phone: account.phone, channelType } });
     delete account.accessToken; // never echo the token
     res.status(201).json({
       success: true, account,
-      message: 'WhatsApp account added. It will show as connected once verified with Meta.',
+      message: channelType === 'manual'
+        ? 'Number added as a manual channel. Broadcasts to it produce click-to-chat links you send from your own WhatsApp app.'
+        : 'WhatsApp account added. It will show as connected once verified with Meta.',
       remainingSlots: MAX_ACCOUNTS - waAccounts.countActiveForUser(req.user._id),
     });
   } catch (err) {
@@ -90,6 +112,18 @@ router.put('/:id', protect, requireVerified, (req, res) => {
     for (const k of allowed) if (req.body[k] !== undefined) updates[k] = req.body[k];
     if (updates.color && !/^#([0-9A-Fa-f]{6})$/.test(updates.color)) return res.status(400).json({ success: false, message: 'Invalid color code.' });
     if (!isValidPhoneNumberId(updates.phoneNumberId)) return res.status(400).json({ success: false, message: 'Invalid phone number ID.' });
+
+    const current = waAccounts.findForUser(req.params.id, req.user._id);
+    if (!current) return res.status(404).json({ success: false, message: 'Account not found.' });
+    // Adding Cloud API credentials to a manual channel is a contradiction —
+    // a number registered to the Cloud API leaves the WhatsApp Business app.
+    if (current.channelType === 'manual' && (updates.phoneNumberId || updates.accessToken || updates.wabaId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'This is a manual (WhatsApp Business app / regular WhatsApp) channel and cannot hold Cloud API credentials. Remove it and add it as a Cloud API account if you have registered the number with Meta.',
+        code: 'CHANNEL_CONFLICT',
+      });
+    }
     if (updates.accessToken !== undefined) updates.accessToken = updates.accessToken ? encrypt(updates.accessToken) : '';
 
     const account = waAccounts.update(req.params.id, req.user._id, updates);
@@ -121,6 +155,13 @@ router.post('/:id/test', protect, requireVerified, async (req, res) => {
   try {
     const account = waAccounts.findForUserWithToken(req.params.id, req.user._id);
     if (!account) return res.status(404).json({ success: false, message: 'Account not found.' });
+    if (account.channelType === 'manual') {
+      return res.status(400).json({
+        success: false,
+        message: 'Manual channels have no API to test. This number is used through your own WhatsApp app via click-to-chat links.',
+        code: 'MANUAL_CHANNEL',
+      });
+    }
 
     const r = await wa.testConnection(account);
     const qualityMap = { green: 'high', yellow: 'medium', red: 'low' };
@@ -132,14 +173,34 @@ router.post('/:id/test', protect, requireVerified, async (req, res) => {
         quality: qualityMap[r.qualityRating] || 'high',
         qualityLabel: (qualityMap[r.qualityRating] || 'high').replace(/^./, c => c.toUpperCase()),
       } : {}),
+      /*
+       * Refresh the messaging tier while we're here — it gates audience size.
+       * Only write it when Meta actually reported one; a response missing the
+       * field must not overwrite a known tier with a guess.
+       */
+      ...(r.ok && r.messagingLimit != null ? {
+        messagingLimit: r.messagingLimit,
+        messagingLimitCheckedAt: new Date(),
+      } : {}),
     });
+    if (r.ok) {
+      // Snapshot the reading so quality and tier build a history over time.
+      const fresh = waAccounts.findForUser(req.params.id, req.user._id);
+      if (fresh) health.record(fresh, 'test');
+    }
     logAction(req, 'whatsapp_account.test', { targetId: req.params.id, meta: { ok: r.ok } });
 
-    if (!r.ok) return res.status(400).json({ success: false, message: `Connection failed: ${r.error}` });
+    if (!r.ok) return res.status(400).json({ success: false, message: `Connection failed: ${r.error}`, code: r.code });
+    const tierNote = r.messagingLimit == null
+      ? ' Meta did not report a messaging tier for this number, so audience-size checks stay off until it does.'
+      : r.messagingLimit < Number.MAX_SAFE_INTEGER
+        ? ` Messaging tier: ${r.messagingLimit.toLocaleString()} unique recipients per 24h.`
+        : ' Messaging tier: unlimited.';
     res.json({
       success: true,
-      message: `Connected! Verified as "${r.verifiedName || account.name}" (${r.displayPhoneNumber || account.phone}).`,
-      verifiedName: r.verifiedName, displayPhoneNumber: r.displayPhoneNumber, qualityRating: r.qualityRating,
+      message: `Connected! Verified as "${r.verifiedName || account.name}" (${r.displayPhoneNumber || account.phone}).${tierNote}`,
+      verifiedName: r.verifiedName, displayPhoneNumber: r.displayPhoneNumber,
+      qualityRating: r.qualityRating, messagingLimit: r.messagingLimit,
     });
   } catch (err) {
     console.error('Test account error:', err.message);

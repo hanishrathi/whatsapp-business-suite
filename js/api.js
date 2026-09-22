@@ -246,8 +246,23 @@ const API = {
   async deleteContact(id) {
     return this.request(`/contacts/${id}`, { method: 'DELETE' });
   },
-  async importContacts(rows) {
-    return this.request('/contacts/import', { method: 'POST', body: JSON.stringify({ contacts: rows }) });
+  // `optInSource` records how consent was obtained for the whole list —
+  // WhatsApp requires opt-in before any business-initiated message.
+  async importContacts(rows, optInSource) {
+    return this.request('/contacts/import', {
+      method: 'POST',
+      body: JSON.stringify({ contacts: rows, optInSource: optInSource || '' }),
+    });
+  },
+  async optInContact(id, source) {
+    return this.request(`/contacts/${id}/opt-in`, { method: 'POST', body: JSON.stringify({ source }) });
+  },
+  async optOutContact(id, reason) {
+    return this.request(`/contacts/${id}/opt-out`, { method: 'POST', body: JSON.stringify({ reason }) });
+  },
+  // Upgrade path: record consent for contacts added before consent was tracked.
+  async optInExistingContacts(source) {
+    return this.request('/contacts/opt-in-existing', { method: 'POST', body: JSON.stringify({ source }) });
   },
   async exportContactsCsv() {
     // Download with the auth header, then trigger a save dialog.
@@ -279,6 +294,10 @@ const API = {
   async deleteTemplate(id) {
     return this.request(`/templates/${id}`, { method: 'DELETE' });
   },
+  // Pull approved templates down from the WhatsApp Business Account.
+  async syncTemplates(accountId) {
+    return this.request('/templates/sync', { method: 'POST', body: JSON.stringify({ accountId }) });
+  },
 
   // ========== BROADCASTS ==========
   async getBroadcasts() {
@@ -298,6 +317,36 @@ const API = {
   },
   async sendBroadcast(id) {
     return this.request(`/broadcasts/${id}/send`, { method: 'POST', body: '{}' });
+  },
+  // Resend to recipients that failed for a transient reason.
+  async retryBroadcast(id) {
+    return this.request(`/broadcasts/${id}/retry`, { method: 'POST', body: '{}' });
+  },
+  // Click-to-chat links for a manual (WhatsApp Business app / regular WhatsApp) channel.
+  async getBroadcastHandoff(id) {
+    return this.request(`/broadcasts/${id}/handoff`);
+  },
+
+  // ========== CONVERSATIONS ==========
+  async getConversations() {
+    return this.request('/conversations');
+  },
+  async getConversation(contactId) {
+    return this.request(`/conversations/${contactId}`);
+  },
+  // Free-form reply. The server refuses this outside the 24h service window.
+  async replyToConversation(contactId, body, accountId) {
+    return this.request(`/conversations/${contactId}/reply`, {
+      method: 'POST', body: JSON.stringify({ body, accountId }),
+    });
+  },
+
+  // ========== INSIGHTS ==========
+  async getInsights(days) {
+    return this.request('/insights' + (days ? `?days=${days}` : ''));
+  },
+  async getInsightsHistory(days) {
+    return this.request('/insights/history' + (days ? `?days=${days}` : ''));
   },
 
   // ========== DASHBOARD ==========
