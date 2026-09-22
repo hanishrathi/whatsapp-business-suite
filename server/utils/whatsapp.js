@@ -11,7 +11,12 @@ const { decrypt } = require('./crypto');
  */
 
 const GRAPH_VERSION = process.env.WA_GRAPH_VERSION || 'v23.0';
-const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`;
+/*
+ * Graph host. Override with WA_GRAPH_BASE_URL to point at Meta's sandbox, an
+ * outbound proxy, or a local stub for testing — production leaves it unset.
+ */
+const GRAPH_HOST = (process.env.WA_GRAPH_BASE_URL || 'https://graph.facebook.com').replace(/\/+$/, '');
+const GRAPH_BASE = `${GRAPH_HOST}/${GRAPH_VERSION}`;
 
 /*
  * Meta error codes we act on. Everything else is treated as a permanent

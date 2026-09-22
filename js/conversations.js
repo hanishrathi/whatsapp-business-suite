@@ -95,6 +95,9 @@
     const res = await API.getConversation(contactId);
     if (!res.success) return;
     activeContactId = contactId;
+    // On phones the list and the thread share one pane; this swaps to the thread.
+    const layout = document.querySelector('.conversations-layout');
+    if (layout) layout.classList.add('thread-open');
 
     const convo = conversations.find(c => c.contactId === contactId) || {};
     const nameEl = document.getElementById('chatUserName');
@@ -221,6 +224,14 @@
         filter = btn.dataset.convoFilter;
         renderList();
       });
+    });
+
+    const backBtn = document.getElementById('chatBackBtn');
+    if (backBtn) backBtn.addEventListener('click', () => {
+      const layout = document.querySelector('.conversations-layout');
+      if (layout) layout.classList.remove('thread-open');
+      activeContactId = null;
+      renderList();
     });
 
     const sendBtn = document.getElementById('chatSendBtn');

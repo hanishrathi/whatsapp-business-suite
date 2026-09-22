@@ -1501,8 +1501,24 @@ input, select, textarea { font-family: inherit; }
   .charts-row { grid-template-columns: 1fr; }
   .search-box { width: 180px; }
   .quick-actions { grid-template-columns: repeat(2, 1fr); }
-  .conversations-layout { grid-template-columns: 1fr; }
-  .convo-sidebar { display: none; }
+
+  /* The layout bleeds to the screen edge, so the negative margin has to match
+     the page padding at this breakpoint — 28px here pushed the page 24px wider
+     than the viewport. */
+  .conversations-layout {
+    grid-template-columns: 1fr;
+    margin: -16px;
+    height: calc(100vh - var(--topbar-h) - 32px);
+  }
+  /*
+   * One pane at a time on a phone: the list, or the thread once one is picked.
+   * Previously the list was hidden outright, which left no way to choose a
+   * conversation on mobile at all.
+   */
+  .convo-sidebar { display: flex; }
+  .conversations-layout.thread-open .convo-sidebar { display: none; }
+  .chat-main { display: none; }
+  .conversations-layout.thread-open .chat-main { display: flex; flex-direction: column; }
 }
 
 @media (max-width: 480px) {
@@ -1529,3 +1545,77 @@ input, select, textarea { font-family: inherit; }
 .status-pill.draft, .status-pill.pending, .status-pill.scheduled { background: rgba(255,149,0,0.12); color:#c2740a; }
 .status-pill.blocked, .status-pill.rejected, .status-pill.failed, .status-pill.unsubscribed { background: rgba(255,59,48,0.1); color:#d13b30; }
 .entity-empty { text-align:center; padding:30px; color:#86868b; }
+
+/* ========== RESPONSIVE OVERFLOW GUARDS ==========
+ * Flex and grid items default to min-width:auto, meaning they refuse to shrink
+ * below their content's intrinsic width. With a wide table or a long stat value
+ * inside, that propagated all the way up and made the whole page wider than the
+ * viewport on phones. Allowing these containers to shrink is what lets the
+ * scroll happen inside the table wrapper, where it belongs.
+ */
+.main { min-width: 0; }
+.page { min-width: 0; }
+.card { min-width: 0; }
+.stats-grid > *, .analytics-grid > *, .charts-row > *,
+.bottom-row > *, .bottom-cards > *, .quick-actions > * { min-width: 0; }
+.stat-card, .chart-card, .stat-body { min-width: 0; }
+.stat-value, .stat-label { min-width: 0; overflow-wrap: anywhere; }
+.conversations-layout > * { min-width: 0; }
+.chat-main, .chat-header, .chat-messages, .chat-input, .convo-sidebar { min-width: 0; }
+.convo-body, .convo-msg, .convo-name { min-width: 0; overflow-wrap: anywhere; }
+/* Long words and pasted URLs in a message must wrap, not widen the pane. */
+.chat-bubble p { overflow-wrap: anywhere; }
+
+/* Wide tables scroll inside their own container instead of the page. */
+.data-table { width: 100%; }
+.card > div[style*="overflow-x"] { max-width: 100%; }
+
+/* Back button for the one-pane mobile conversation view.
+   Declared here, AFTER the breakpoint blocks above, so its own media query
+   below is the last word — otherwise `display:none` wins at equal specificity
+   and the button is unreachable on a phone. */
+.chat-back-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text, #1d1d1f);
+  /* 44px is the smallest reliably tappable target (Apple HIG / Material). */
+  min-width: 44px;
+  min-height: 44px;
+  margin-right: 2px;
+  border-radius: 10px;
+}
+.chat-back-btn:hover { background: rgba(0,0,0,0.05); }
+
+@media (max-width: 768px) {
+  .chat-back-btn { display: inline-flex; }
+}
+
+/* ---- Touch target sizes ----
+   Icon-only controls were as small as 18x18, which is well under the ~44px
+   minimum for a fingertip. Padding them out costs nothing on desktop. */
+.chat-send-btn,
+.chat-input-btn,
+.menu-toggle,
+.modal-close,
+.topbar-btn {
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+@media (min-width: 769px) {
+  /* Desktop has a pointer, so keep the denser original sizing there. */
+  .menu-toggle, .topbar-btn, .modal-close { min-width: 36px; min-height: 36px; }
+}
+.row-action-btn { min-height: 36px; }
+@media (max-width: 768px) {
+  .row-action-btn { min-height: 44px; padding: 8px 10px; }
+}
+
+/* Nothing may cause a sideways scroll of the document itself. */
+html, body { max-width: 100%; overflow-x: hidden; }
