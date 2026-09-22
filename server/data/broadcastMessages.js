@@ -27,6 +27,24 @@ function markResult(id, { wamid, status, error, errorCode, billingCategory }) {
 }
 
 /*
+ * Recipients of a broadcast whose send failed for a reason worth retrying.
+ * Permanent failures (not on WhatsApp, blocked, template rejected) are left
+ * alone — retrying those wastes quota and hurts the number's quality rating.
+ */
+function retryableFailures(broadcastId, retryableCodes) {
+  const rows = getDb().prepare(
+    `SELECT * FROM broadcast_messages WHERE broadcastId = ? AND status = 'failed'`).all(broadcastId);
+  return rows.filter(r => r.errorCode == null || retryableCodes.has(r.errorCode));
+}
+
+// Put a row back to pending so a retry run can claim it.
+function resetToPending(id) {
+  getDb().prepare(
+    `UPDATE broadcast_messages SET status = 'pending', error = NULL, errorCode = NULL, updatedAt = ? WHERE id = ?`)
+    .run(now(), id);
+}
+
+/*
  * Unique recipients this number has started business-initiated conversations
  * with in the last rolling 24 hours. Meta's messaging tier caps exactly this,
  * across every broadcast — not per broadcast.
@@ -208,7 +226,7 @@ function billingCountsForUser(userId) {
 
 module.exports = {
   createPending, markResult, advanceStatusByWamid, countsForBroadcast,
-  uniqueRecipientsLast24h, recipientsLast24h,
+  uniqueRecipientsLast24h, recipientsLast24h, retryableFailures, resetToPending,
   syncBroadcastCounters, statsForUser, templatePerformanceForUser, consentStatsForUser,
   billingCountsForUser,
 };

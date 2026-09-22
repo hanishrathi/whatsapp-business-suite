@@ -318,9 +318,27 @@ const API = {
   async sendBroadcast(id) {
     return this.request(`/broadcasts/${id}/send`, { method: 'POST', body: '{}' });
   },
+  // Resend to recipients that failed for a transient reason.
+  async retryBroadcast(id) {
+    return this.request(`/broadcasts/${id}/retry`, { method: 'POST', body: '{}' });
+  },
   // Click-to-chat links for a manual (WhatsApp Business app / regular WhatsApp) channel.
   async getBroadcastHandoff(id) {
     return this.request(`/broadcasts/${id}/handoff`);
+  },
+
+  // ========== CONVERSATIONS ==========
+  async getConversations() {
+    return this.request('/conversations');
+  },
+  async getConversation(contactId) {
+    return this.request(`/conversations/${contactId}`);
+  },
+  // Free-form reply. The server refuses this outside the 24h service window.
+  async replyToConversation(contactId, body, accountId) {
+    return this.request(`/conversations/${contactId}/reply`, {
+      method: 'POST', body: JSON.stringify({ body, accountId }),
+    });
   },
 
   // ========== DASHBOARD ==========

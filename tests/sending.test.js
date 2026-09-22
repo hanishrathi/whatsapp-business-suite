@@ -300,6 +300,33 @@ test('a fatal Meta error aborts the run instead of burning the audience', async 
   expect(messageCalls).toHaveLength(1);  // did not try the second contact
 });
 
+test('retry resends transient failures but not permanent ones', async () => {
+  const { auth, templateId } = await setupUserWithAccountAndContacts();
+  // 130429 is a rate limit — transient, so retryable.
+  mockMeta({ sendFails: { code: 130429, message: 'Cloud API message throughput reached.' } });
+  const created = await auth(request(app).post('/api/broadcasts')).send({ name: 'Flaky', templateId });
+  await sender.sendNow(created.body.broadcast._id, owner()._id).promise;
+
+  // Meta recovers; the retry should go through.
+  mockMeta();
+  const r = sender.retryFailed(created.body.broadcast._id, owner()._id);
+  expect(r.started).toBe(true);
+  expect(r.retryCount).toBe(2);
+  const outcome = await r.promise;
+  expect(outcome.sent).toBe(2);
+});
+
+test('retry skips permanently failed recipients', async () => {
+  const { auth, templateId } = await setupUserWithAccountAndContacts();
+  // 131026 means the number is not reachable on WhatsApp — never retry it.
+  mockMeta({ sendFails: { code: 131026, message: 'Message undeliverable.' } });
+  const created = await auth(request(app).post('/api/broadcasts')).send({ name: 'Dead', templateId });
+  await sender.sendNow(created.body.broadcast._id, owner()._id).promise;
+
+  const r = sender.retryFailed(created.body.broadcast._id, owner()._id);
+  expect(r.code).toBe('NOTHING_TO_RETRY');
+});
+
 test('double-send is blocked and a sent broadcast cannot be resent', async () => {
   const { auth, templateId } = await setupUserWithAccountAndContacts();
   const created = await auth(request(app).post('/api/broadcasts')).send({ name: 'Once', templateId });

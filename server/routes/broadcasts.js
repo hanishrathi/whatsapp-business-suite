@@ -131,6 +131,28 @@ router.post('/:id/send', protect, requireVerified, (req, res) => {
 });
 
 /*
+ * POST /api/broadcasts/:id/retry — resend to recipients that failed for a
+ * transient reason. Permanent failures are skipped deliberately.
+ */
+router.post('/:id/retry', protect, requireVerified, (req, res) => {
+  try {
+    const r = sender.retryFailed(req.params.id, req.user._id);
+    if (r.error) {
+      const status = r.code === 'NOT_FOUND' ? 404 : 400;
+      return res.status(status).json({ success: false, message: r.error, code: r.code });
+    }
+    logAction(req, 'broadcast.retry', { targetId: req.params.id, meta: { count: r.retryCount } });
+    res.status(202).json({
+      success: true, retryCount: r.retryCount,
+      message: `Retrying ${r.retryCount} failed recipient${r.retryCount === 1 ? '' : 's'}…`,
+    });
+  } catch (err) {
+    console.error('Retry broadcast error:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to start retry.' });
+  }
+});
+
+/*
  * GET /api/broadcasts/:id/handoff — click-to-chat links for a manual channel.
  *
  * Meta publishes no API for the WhatsApp Business app or regular WhatsApp, so

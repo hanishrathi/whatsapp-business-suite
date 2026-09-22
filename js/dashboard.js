@@ -538,6 +538,7 @@ async function loadDashboardStats() {
 
   renderConsentStat(s.consent);
   renderTemplatePerformance(s.templatePerformance);
+  renderSpend(s.spend);
 
   // Sidebar plan meter — real monthly volume (Meta's free tier ≈ 1,000 conversations/month).
   const user = API.getUser();
@@ -597,6 +598,56 @@ function renderTemplatePerformance(rows) {
       </div>
       <div class="mini-bar"><div class="mini-bar-fill" style="width:${Math.min(r.readRate, 100)}%;background:${colors[i % colors.length]}"></div></div>
     </div>`).join('');
+}
+
+/*
+ * Estimated WhatsApp spend this month, by billing category.
+ *
+ * Service messages (free-form replies inside the 24h window) are free until
+ * 1 Oct 2026 and billable after, so the banner counts down to that change —
+ * it is the single most expensive surprise on this platform right now.
+ */
+function renderSpend(spend) {
+  const el = document.getElementById('spendPanel');
+  if (!el || !spend) return;
+
+  const rows = (spend.lines || []).filter(l => l.count > 0);
+  const notice = !spend.serviceBillingActive && spend.daysUntilServiceBilling > 0 && spend.counts.service
+    ? `<div style="margin-bottom:12px;padding:10px 12px;background:#FFF4E5;border:1px solid #FFE08A;border-radius:10px;font-size:12px;line-height:1.5;color:#6b5700;">
+         <strong>${spend.daysUntilServiceBilling} day${spend.daysUntilServiceBilling === 1 ? '' : 's'}</strong>
+         until free-form service replies become billable (1 Oct 2026). You have sent
+         <strong>${spend.counts.service.toLocaleString()}</strong> this month — those would be charged
+         above the first ${spend.serviceFreeAllowance.toLocaleString()}/number/month.
+       </div>` : '';
+
+  if (!rows.length) {
+    el.innerHTML = notice + `<div style="padding:16px 4px;color:#86868b;font-size:13px;">No billable messages this month.</div>`;
+    return;
+  }
+
+  el.innerHTML = notice + `
+    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <thead><tr style="text-align:left;color:#86868b;font-size:11px;text-transform:uppercase;letter-spacing:.04em;">
+        <th style="padding:6px 0;">Category</th><th style="text-align:right;">Sent</th>
+        <th style="text-align:right;">Billable</th><th style="text-align:right;">Est. cost</th>
+      </tr></thead>
+      <tbody>
+        ${rows.map(l => `
+          <tr style="border-top:1px solid #f0f0f4;">
+            <td style="padding:8px 0;text-transform:capitalize;">${escapeHtml(l.category)}</td>
+            <td style="text-align:right;">${l.count.toLocaleString()}</td>
+            <td style="text-align:right;color:${l.billableCount ? '#1d1d1f' : '#86868b'}">${l.billableCount.toLocaleString()}</td>
+            <td style="text-align:right;">$${l.cost.toFixed(2)}</td>
+          </tr>`).join('')}
+        <tr style="border-top:2px solid #e8e8ed;font-weight:700;">
+          <td style="padding:8px 0;">Total</td><td></td><td></td>
+          <td style="text-align:right;">$${(spend.total || 0).toFixed(2)}</td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="margin:10px 0 0;font-size:11px;color:#a1a1a6;line-height:1.5;">
+      Indicative only — Meta's rates vary by recipient market. Set WA_RATE_* in your environment to match your own pricing.
+    </p>`;
 }
 
 // Fill the "Campaign Performance" and "Active Templates" dashboard cards with real data.

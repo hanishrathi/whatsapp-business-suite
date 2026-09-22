@@ -238,6 +238,63 @@ function sendNow(broadcastId, userId) {
   return { started: true, audienceCount: audience.length, promise };
 }
 
+/* ---------- retry ---------- */
+
+/*
+ * Retry the recipients of a finished broadcast whose send failed for a
+ * transient reason (rate limits, network blips, or an unrecorded cause).
+ *
+ * Permanent failures are deliberately NOT retried: 131026 means the number is
+ * not reachable on WhatsApp, 131049 means Meta suppressed the message to
+ * protect the user. Re-sending those burns quota and damages quality.
+ */
+function retryFailed(broadcastId, userId) {
+  const b = broadcasts.findForUser(broadcastId, userId);
+  if (!b) return { error: 'Broadcast not found.', code: 'NOT_FOUND' };
+  if (b.status === 'sending' || inFlight.has(b._id)) return { error: 'This broadcast is still sending.', code: 'BUSY' };
+
+  const retryable = new Set([
+    wa.ERROR_CODES.RATE_LIMIT,
+    wa.ERROR_CODES.PAIR_RATE_LIMIT,
+    wa.ERROR_CODES.TOO_MANY_REQUESTS,
+  ]);
+  const rows = bmsgs.retryableFailures(b._id, retryable);
+  if (!rows.length) {
+    return { error: 'Nothing to retry — no recipients failed for a transient reason.', code: 'NOTHING_TO_RETRY' };
+  }
+
+  const account = b.accountId
+    ? waAccounts.findForUserWithToken(b.accountId, userId)
+    : waAccounts.firstSendableForUser(userId);
+  if (!account || account.channelType === 'manual' || !wa.credsFor(account)) {
+    return { error: 'No Cloud API account with credentials to retry from.', code: 'NO_ACCOUNT' };
+  }
+  if (!b.templateId) return { error: 'This broadcast has no template to resend.', code: 'TEMPLATE_REQUIRED' };
+  const template = templates.findForUser(b.templateId, userId);
+  if (!template || !template.isSendable) {
+    return { error: 'The template is no longer approved, so it cannot be resent.', code: 'TEMPLATE_NOT_APPROVED' };
+  }
+
+  // Only retry contacts who still consent — consent may have changed since.
+  const category = (template.category || 'marketing').toLowerCase();
+  const audience = [];
+  for (const row of rows) {
+    const contact = contacts.findActiveByPhone(userId, row.phone);
+    if (!contact || !contact.hasOptIn || contact.status !== 'active') continue;
+    if (category === 'marketing' && !contact.acceptsMarketing) continue;
+    audience.push(contact);
+    bmsgs.resetToPending(row.id);
+  }
+  if (!audience.length) {
+    return { error: 'None of the failed recipients still have valid consent.', code: 'NO_AUDIENCE' };
+  }
+
+  if (!broadcasts.claimForSending(b._id, userId)) return { error: 'This broadcast is already sending.', code: 'BUSY' };
+  inFlight.add(b._id);
+  const promise = runBroadcast(b, account, audience, template, category);
+  return { started: true, retryCount: audience.length, promise };
+}
+
 /* ---------- click-to-chat handoff (manual channels) ---------- */
 
 /*
@@ -325,5 +382,5 @@ function stopScheduler() {
 }
 
 module.exports = {
-  sendNow, buildHandoffLinks, startScheduler, stopScheduler, tick, personalize,
+  sendNow, retryFailed, buildHandoffLinks, startScheduler, stopScheduler, tick, personalize,
 };

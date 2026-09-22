@@ -220,6 +220,7 @@
         <td style="text-align:right;white-space:nowrap;">
           ${sendable ? `<button class="row-action-btn" data-send-broadcast="${b._id}" data-broadcast-name="${esc(b.name)}" data-audience="${b.audienceCount}">Send now</button>` : ''}
           ${isManual ? `<button class="row-action-btn" data-handoff-broadcast="${b._id}" data-broadcast-name="${esc(b.name)}">Open in WhatsApp</button>` : ''}
+          ${!isManual && b.failedCount ? `<button class="row-action-btn" data-retry-broadcast="${b._id}" data-failed="${b.failedCount}">Retry ${b.failedCount} failed</button>` : ''}
           ${b.status === 'sending' ? `<button class="row-action-btn" disabled style="opacity:.5">Sending…</button>` : ''}
           <button class="row-action-btn danger" data-del-broadcast="${b._id}">Delete</button>
         </td>
@@ -538,6 +539,13 @@
           alert(res.message || 'Could not start sending.');
           t.disabled = false; t.textContent = 'Send now';
         }
+        loadBroadcasts();
+      }
+      if (t.dataset.retryBroadcast) {
+        if (!confirm(`Retry the ${t.dataset.failed} failed recipient(s)?\n\nOnly transient failures (rate limits, network errors) are retried — numbers that are not on WhatsApp are skipped.`)) return;
+        t.disabled = true; t.textContent = 'Retrying…';
+        const res = await API.retryBroadcast(t.dataset.retryBroadcast);
+        if (!res.success) { alert(res.message || 'Could not retry.'); t.disabled = false; }
         loadBroadcasts();
       }
       if (t.dataset.handoffBroadcast) {
