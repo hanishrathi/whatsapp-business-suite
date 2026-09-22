@@ -117,6 +117,7 @@ app.use('/api/accounts', apiLimiter, require('./routes/accounts'));
 app.use('/api/contacts', apiLimiter, require('./routes/contacts'));
 app.use('/api/templates', apiLimiter, require('./routes/templates'));
 app.use('/api/broadcasts', apiLimiter, require('./routes/broadcasts'));
+app.use('/api/conversations', apiLimiter, require('./routes/conversations'));
 app.use('/api/dashboard', apiLimiter, require('./routes/dashboard'));
 
 // Meta webhook — no auth (Meta calls it), generous limit (delivery receipts burst).

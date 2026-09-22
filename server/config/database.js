@@ -171,6 +171,29 @@ function createSchema() {
     CREATE UNIQUE INDEX IF NOT EXISTS uq_bm_wamid ON broadcast_messages(wamid) WHERE wamid IS NOT NULL;
     CREATE INDEX IF NOT EXISTS ix_bm_user_time ON broadcast_messages(userId, createdAt);
 
+    CREATE TABLE IF NOT EXISTS messages (
+      id TEXT PRIMARY KEY,
+      userId TEXT NOT NULL,
+      accountId TEXT,
+      contactId TEXT,
+      phone TEXT NOT NULL,
+      direction TEXT NOT NULL,            -- 'in' | 'out'
+      type TEXT DEFAULT 'text',           -- text | image | audio | document | ...
+      body TEXT DEFAULT '',
+      wamid TEXT,
+      status TEXT DEFAULT 'received',     -- outbound: sent/delivered/read/failed
+      error TEXT,
+      errorCode INTEGER,
+      -- Billing category at send time: service | marketing | utility | authentication.
+      billingCategory TEXT DEFAULT '',
+      isBillable INTEGER DEFAULT 0,
+      createdAt INTEGER NOT NULL,
+      updatedAt INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS ix_msg_user_time ON messages(userId, createdAt);
+    CREATE INDEX IF NOT EXISTS ix_msg_contact_time ON messages(contactId, createdAt);
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_msg_wamid ON messages(wamid) WHERE wamid IS NOT NULL;
+
     CREATE TABLE IF NOT EXISTS audit_logs (
       id TEXT PRIMARY KEY,
       userId TEXT,
@@ -227,6 +250,18 @@ const MIGRATIONS = [
 
   // Per-recipient Meta error code, so failures can be triaged and retried sanely.
   `ALTER TABLE broadcast_messages ADD COLUMN errorCode INTEGER`,
+
+  // Per-category consent. Someone who stops marketing may still want order
+  // updates, so a marketing opt-out is tracked separately from a full one.
+  `ALTER TABLE contacts ADD COLUMN marketingOptOutAt INTEGER`,
+
+  // Quality + ban state pushed by Meta's account_update webhook.
+  `ALTER TABLE whatsapp_accounts ADD COLUMN qualityUpdatedAt INTEGER`,
+  `ALTER TABLE whatsapp_accounts ADD COLUMN banState TEXT DEFAULT ''`,
+
+  // Billing category, so spend can be attributed once service messages
+  // become billable on 2026-10-01.
+  `ALTER TABLE broadcast_messages ADD COLUMN billingCategory TEXT DEFAULT ''`,
 ];
 
 function runMigrations() {
@@ -239,6 +274,8 @@ function runMigrations() {
     }
   }
   db.exec(`CREATE INDEX IF NOT EXISTS ix_contacts_optin ON contacts(userId, optInAt)`);
+  // Powers the rolling 24h unique-recipient check against the messaging tier.
+  db.exec(`CREATE INDEX IF NOT EXISTS ix_bm_user_phone_time ON broadcast_messages(userId, phone, createdAt)`);
   // A WABA template is keyed by name+language, so duplicates are meaningless.
   // On a legacy database that already has duplicates this index can't be built;
   // warn rather than refusing to boot.

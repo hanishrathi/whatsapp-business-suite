@@ -64,6 +64,7 @@ router.post('/', protect, requireVerified, (req, res) => {
       return res.status(400).json({ success: false, message: 'Enter the message text to hand off to your WhatsApp app.' });
     }
     // Warn early rather than at send time if the chosen template isn't approved.
+    let category = null;
     if (templateId) {
       const t = templates.findForUser(templateId, req.user._id);
       if (needsTemplate && t && !t.isSendable) {
@@ -73,10 +74,17 @@ router.post('/', protect, requireVerified, (req, res) => {
           code: 'TEMPLATE_NOT_APPROVED',
         });
       }
+      if (t) category = (t.category || 'marketing').toLowerCase();
     }
 
-    const audienceCount = contacts.countAudience(req.user._id, audienceTag);
-    const excluded = contacts.countExcludedFromAudience(req.user._id, audienceTag);
+    /*
+     * Count the audience the way the sender will select it: a MARKETING
+     * template also skips anyone who opted out of marketing specifically, so
+     * counting without the category would promise more recipients than the
+     * send delivers.
+     */
+    const audienceCount = contacts.countAudience(req.user._id, audienceTag, category);
+    const excluded = contacts.countExcludedFromAudience(req.user._id, audienceTag, category);
     const broadcast = broadcasts.create({
       userId: req.user._id, name, accountId, templateId, message,
       audienceTag: audienceTag || 'all', audienceCount, scheduledAt,

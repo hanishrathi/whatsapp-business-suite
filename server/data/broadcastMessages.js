@@ -19,9 +19,32 @@ function createPending(broadcastId, userId, contact) {
   return id;
 }
 
-function markResult(id, { wamid, status, error, errorCode }) {
-  getDb().prepare('UPDATE broadcast_messages SET wamid = ?, status = ?, error = ?, errorCode = ?, updatedAt = ? WHERE id = ?')
-    .run(wamid || null, status, error || null, errorCode == null ? null : errorCode, now(), id);
+function markResult(id, { wamid, status, error, errorCode, billingCategory }) {
+  getDb().prepare(`UPDATE broadcast_messages SET wamid = ?, status = ?, error = ?, errorCode = ?,
+                   billingCategory = COALESCE(?, billingCategory), updatedAt = ? WHERE id = ?`)
+    .run(wamid || null, status, error || null, errorCode == null ? null : errorCode,
+         billingCategory || null, now(), id);
+}
+
+/*
+ * Unique recipients this number has started business-initiated conversations
+ * with in the last rolling 24 hours. Meta's messaging tier caps exactly this,
+ * across every broadcast — not per broadcast.
+ */
+function uniqueRecipientsLast24h(userId) {
+  return getDb().prepare(
+    `SELECT COUNT(DISTINCT phone) c FROM broadcast_messages
+      WHERE userId = ? AND createdAt >= ? AND status != 'failed'`)
+    .get(userId, Date.now() - 24 * 60 * 60 * 1000).c;
+}
+
+// Phones already messaged in the window — they don't consume fresh tier quota.
+function recipientsLast24h(userId) {
+  const rows = getDb().prepare(
+    `SELECT DISTINCT phone FROM broadcast_messages
+      WHERE userId = ? AND createdAt >= ? AND status != 'failed'`)
+    .all(userId, Date.now() - 24 * 60 * 60 * 1000);
+  return new Set(rows.map(r => r.phone));
 }
 
 // Webhook path: advance status by WhatsApp message id. Returns the row (for broadcastId) or null.
@@ -151,7 +174,41 @@ function consentStatsForUser(userId) {
   };
 }
 
+/*
+ * Billable message counts for the current calendar month, by category.
+ * Combines broadcast sends (templates) with conversation replies (service),
+ * which is what Meta bills against.
+ */
+function billingCountsForUser(userId) {
+  const db = getDb();
+  const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
+  const since = monthStart.getTime();
+  const delivered = "status IN ('sent','delivered','read')";
+
+  const counts = { marketing: 0, utility: 0, authentication: 0, service: 0 };
+
+  for (const r of db.prepare(
+    `SELECT billingCategory cat, COUNT(*) c FROM broadcast_messages
+      WHERE userId = ? AND ${delivered} AND createdAt >= ? GROUP BY billingCategory`)
+    .all(userId, since)) {
+    const key = r.cat || 'marketing'; // rows sent before categories were tracked
+    if (counts[key] !== undefined) counts[key] += r.c;
+  }
+
+  for (const r of db.prepare(
+    `SELECT billingCategory cat, COUNT(*) c FROM messages
+      WHERE userId = ? AND direction = 'out' AND ${delivered} AND createdAt >= ? GROUP BY billingCategory`)
+    .all(userId, since)) {
+    const key = r.cat || 'service';
+    if (counts[key] !== undefined) counts[key] += r.c;
+  }
+
+  return counts;
+}
+
 module.exports = {
   createPending, markResult, advanceStatusByWamid, countsForBroadcast,
+  uniqueRecipientsLast24h, recipientsLast24h,
   syncBroadcastCounters, statsForUser, templatePerformanceForUser, consentStatsForUser,
+  billingCountsForUser,
 };

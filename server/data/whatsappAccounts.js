@@ -97,7 +97,7 @@ function update(id, userId, fields) {
   const allowed = {};
   for (const [k, v] of Object.entries(fields)) {
     if (k === 'isVerified') allowed[k] = fromBool(v);
-    else if (k === 'verifiedAt' || k === 'messagingLimitCheckedAt') allowed[k] = fromDate(v);
+    else if (k === 'verifiedAt' || k === 'messagingLimitCheckedAt' || k === 'qualityUpdatedAt') allowed[k] = fromDate(v);
     else allowed[k] = v;
   }
   const cols = Object.keys(allowed);

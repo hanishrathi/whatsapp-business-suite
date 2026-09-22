@@ -2,8 +2,10 @@ const express = require('express');
 const crypto = require('crypto');
 const router = express.Router();
 const bmsgs = require('../data/broadcastMessages');
+const msgs = require('../data/messages');
 const contacts = require('../data/contacts');
 const waAccounts = require('../data/whatsappAccounts');
+const wa = require('../utils/whatsapp');
 const { logSystemAction } = require('../utils/audit');
 
 /*
@@ -32,6 +34,12 @@ const { logSystemAction } = require('../utils/audit');
  */
 const DEFAULT_OPT_OUT = ['stop', 'unsubscribe', 'unsub', 'cancel', 'end', 'quit', 'optout', 'opt out', 'opt-out'];
 const DEFAULT_OPT_IN = ['start', 'subscribe', 'unstop', 'resume'];
+/*
+ * Marketing-only opt-out. Meta encourages per-category consent: someone who
+ * wants no more promotions may still want order updates, so these stop
+ * MARKETING templates without silencing utility messages entirely.
+ */
+const DEFAULT_MARKETING_OPT_OUT = ['stop promotions', 'stop promo', 'no promotions', 'stop marketing', 'no ads'];
 
 function keywordList(envVar, fallback) {
   const raw = process.env[envVar];
@@ -44,6 +52,7 @@ function classifyInbound(text) {
   if (!t) return null;
   if (keywordList('WA_OPT_OUT_KEYWORDS', DEFAULT_OPT_OUT).includes(t)) return 'opt_out';
   if (keywordList('WA_OPT_IN_KEYWORDS', DEFAULT_OPT_IN).includes(t)) return 'opt_in';
+  if (keywordList('WA_MARKETING_OPT_OUT_KEYWORDS', DEFAULT_MARKETING_OPT_OUT).includes(t)) return 'marketing_opt_out';
   return null;
 }
 
@@ -83,13 +92,25 @@ function handleInboundMessage(value, msg) {
   const contact = contacts.findActiveByDigits(account.userId, from);
   if (!contact) return; // unknown sender — nothing to update
 
+  // Text, or the label of whichever button they tapped.
+  const body = (msg.text && msg.text.body) || '';
+  const buttonText = (msg.button && msg.button.text)
+    || (msg.interactive && msg.interactive.button_reply && msg.interactive.button_reply.title)
+    || (msg.interactive && msg.interactive.list_reply && msg.interactive.list_reply.title)
+    || '';
+
+  // Store it. Meta redelivers webhooks, so this is idempotent on wamid.
+  const { isNew } = msgs.createInboundOnce({
+    userId: account.userId, accountId: account._id, contactId: contact._id,
+    phone: contact.phone, type: msg.type || 'text',
+    body: body || buttonText, wamid: msg.id || null,
+  });
+  // A redelivery must not re-open the window or re-fire consent changes.
+  if (!isNew) return;
+
   // Any inbound message opens/extends the 24h customer service window.
   contacts.touchInbound(contact._id, account.userId);
 
-  const body = msg.text && msg.text.body;
-  // Quick-reply buttons carry their label instead of text.
-  const buttonText = (msg.button && msg.button.text)
-    || (msg.interactive && msg.interactive.button_reply && msg.interactive.button_reply.title);
   const intent = classifyInbound(body || buttonText);
 
   if (intent === 'opt_out') {
@@ -102,7 +123,64 @@ function handleInboundMessage(value, msg) {
     logSystemAction('contact.opt_in', {
       userId: account.userId, targetId: contact._id, meta: { via: 'whatsapp_inbound' },
     });
+  } else if (intent === 'marketing_opt_out') {
+    contacts.recordMarketingOptOut(contact._id, account.userId);
+    logSystemAction('contact.marketing_opt_out', {
+      userId: account.userId, targetId: contact._id, meta: { via: 'whatsapp_inbound' },
+    });
   }
+}
+
+/*
+ * account_update: Meta pushes quality-rating changes, messaging-tier changes
+ * and ban/restriction events here. Without it the dashboard keeps showing the
+ * rating from whenever someone last clicked "Test Connection".
+ */
+function handleAccountUpdate(value) {
+  const phoneNumberId = (value.metadata && value.metadata.phone_number_id)
+    || value.phone_number_id;
+  const account = phoneNumberId ? waAccounts.findByPhoneNumberId(phoneNumberId) : null;
+  if (!account) return;
+
+  const updates = {};
+  const qualityMap = { GREEN: 'high', YELLOW: 'medium', RED: 'low' };
+
+  // Quality rating change.
+  const rating = (value.current_limit && value.current_limit.quality_rating)
+    || value.quality_rating
+    || (value.phone_number_quality_update && value.phone_number_quality_update.current_limit);
+  if (rating && qualityMap[String(rating).toUpperCase()]) {
+    const q = qualityMap[String(rating).toUpperCase()];
+    updates.quality = q;
+    updates.qualityLabel = q.replace(/^./, c => c.toUpperCase());
+    updates.qualityUpdatedAt = new Date();
+  }
+
+  // Messaging tier change.
+  const tier = value.messaging_limit_tier
+    || (value.current_limit && value.current_limit.messaging_limit_tier);
+  if (tier) {
+    updates.messagingLimit = wa.tierToLimit(tier);
+    updates.messagingLimitCheckedAt = new Date();
+  }
+
+  // Ban / restriction — the account cannot send until resolved with Meta.
+  const banState = value.ban_info
+    ? (value.ban_info.waba_ban_state || 'BANNED')
+    : (value.decision || value.event);
+  if (banState && /BAN|DISABLE|RESTRICT/i.test(String(banState))) {
+    updates.banState = String(banState).slice(0, 60);
+    updates.status = 'error';
+  } else if (banState && /REINSTATE|APPROVE/i.test(String(banState))) {
+    updates.banState = '';
+    updates.status = 'connected';
+  }
+
+  if (!Object.keys(updates).length) return;
+  waAccounts.update(account._id, account.userId, updates);
+  logSystemAction('whatsapp_account.meta_update', {
+    userId: account.userId, targetId: account._id, meta: updates,
+  });
 }
 
 // Delivery status updates + inbound messages.
@@ -115,12 +193,21 @@ router.post('/whatsapp', (req, res) => {
       for (const change of entry.changes || []) {
         const value = change.value || {};
 
-        // Delivery receipts.
+        // account_update carries quality, tier and ban changes, not messages.
+        if (change.field === 'account_update' || value.ban_info || value.current_limit) {
+          try { handleAccountUpdate(value); } catch (err) {
+            console.error('Account update handling error:', err.message);
+          }
+        }
+
+        // Delivery receipts. A wamid belongs either to a broadcast recipient
+        // or to a conversation reply, so both tables get a chance to advance.
         for (const s of value.statuses || []) {
           // s = { id: wamid, status: 'sent'|'delivered'|'read'|'failed', ... }
           if (!s.id || !s.status) continue;
           const row = bmsgs.advanceStatusByWamid(s.id, s.status);
           if (row) touchedBroadcasts.add(row.broadcastId);
+          msgs.advanceStatusByWamid(s.id, s.status);
         }
 
         // Inbound customer messages.

@@ -19,7 +19,10 @@ function mapRow(row) {
     // Consent state — required before any business-initiated message.
     optInAt, optInSource: row.optInSource || '',
     optOutAt, optOutReason: row.optOutReason || '',
+    marketingOptOutAt: toDate(row.marketingOptOutAt),
     hasOptIn: !!optInAt && !optOutAt,
+    // Marketing needs consent that has not been withdrawn for marketing either.
+    acceptsMarketing: !!optInAt && !optOutAt && !row.marketingOptOutAt,
     // Service window state.
     lastInboundAt,
     serviceWindowOpen: !!lastInboundAt && (Date.now() - lastInboundAt.getTime()) < SERVICE_WINDOW_MS,
@@ -38,6 +41,10 @@ function listForUser(userId, q) {
   return db.prepare('SELECT * FROM contacts WHERE userId = ? AND isActive = 1 ORDER BY createdAt DESC LIMIT 500')
     .all(userId).map(mapRow);
 }
+function findByIdForUser(id, userId) {
+  return mapRow(getDb().prepare('SELECT * FROM contacts WHERE id = ? AND userId = ? AND isActive = 1').get(id, userId));
+}
+
 function findActiveByPhone(userId, phone) {
   return mapRow(getDb().prepare('SELECT * FROM contacts WHERE userId = ? AND phone = ? AND isActive = 1').get(userId, phone));
 }
@@ -70,23 +77,35 @@ function countForUser(userId) {
 const AUDIENCE_WHERE =
   `userId = ? AND isActive = 1 AND status = 'active' AND optInAt IS NOT NULL AND optOutAt IS NULL`;
 
-function countAudience(userId, tag) {
+/*
+ * A MARKETING template additionally requires that marketing consent has not
+ * been withdrawn. Utility and authentication messages still reach someone who
+ * only opted out of promotions.
+ */
+function categoryClause(category) {
+  return String(category || '').toLowerCase() === 'marketing'
+    ? ' AND marketingOptOutAt IS NULL' : '';
+}
+
+function countAudience(userId, tag, category) {
   const db = getDb();
+  const extra = categoryClause(category);
   if (!tag || tag === 'all') {
-    return db.prepare(`SELECT COUNT(*) c FROM contacts WHERE ${AUDIENCE_WHERE}`).get(userId).c;
+    return db.prepare(`SELECT COUNT(*) c FROM contacts WHERE ${AUDIENCE_WHERE}${extra}`).get(userId).c;
   }
-  return db.prepare(`SELECT COUNT(*) c FROM contacts WHERE ${AUDIENCE_WHERE} AND tags LIKE ?`)
+  return db.prepare(`SELECT COUNT(*) c FROM contacts WHERE ${AUDIENCE_WHERE}${extra} AND tags LIKE ?`)
     .get(userId, `%"${tag}"%`).c;
 }
 
 // Full audience rows for an actual send (bigger cap than the UI list).
-function listAudience(userId, tag, limit = 5000) {
+function listAudience(userId, tag, limit = 5000, category) {
   const db = getDb();
+  const extra = categoryClause(category);
   if (!tag || tag === 'all') {
-    return db.prepare(`SELECT * FROM contacts WHERE ${AUDIENCE_WHERE} ORDER BY createdAt LIMIT ?`)
+    return db.prepare(`SELECT * FROM contacts WHERE ${AUDIENCE_WHERE}${extra} ORDER BY createdAt LIMIT ?`)
       .all(userId, limit).map(mapRow);
   }
-  return db.prepare(`SELECT * FROM contacts WHERE ${AUDIENCE_WHERE} AND tags LIKE ? ORDER BY createdAt LIMIT ?`)
+  return db.prepare(`SELECT * FROM contacts WHERE ${AUDIENCE_WHERE}${extra} AND tags LIKE ? ORDER BY createdAt LIMIT ?`)
     .all(userId, `%"${tag}"%`, limit).map(mapRow);
 }
 
@@ -95,9 +114,12 @@ function listAudience(userId, tag, limit = 5000) {
  * to the user before a send so the audience count is never silently smaller
  * than they expect.
  */
-function countExcludedFromAudience(userId, tag) {
+function countExcludedFromAudience(userId, tag, category) {
   const db = getDb();
-  const base = `userId = ? AND isActive = 1 AND (optInAt IS NULL OR optOutAt IS NOT NULL OR status != 'active')`;
+  // For a marketing send, a marketing opt-out is also a reason to be excluded.
+  const marketing = String(category || '').toLowerCase() === 'marketing'
+    ? ' OR marketingOptOutAt IS NOT NULL' : '';
+  const base = `userId = ? AND isActive = 1 AND (optInAt IS NULL OR optOutAt IS NOT NULL OR status != 'active'${marketing})`;
   if (!tag || tag === 'all') {
     return db.prepare(`SELECT COUNT(*) c FROM contacts WHERE ${base}`).get(userId).c;
   }
@@ -147,6 +169,18 @@ function countWithoutConsent(userId) {
   return getDb().prepare(
     `SELECT COUNT(*) c FROM contacts WHERE userId = ? AND isActive = 1 AND optInAt IS NULL AND optOutAt IS NULL`)
     .get(userId).c;
+}
+
+/*
+ * Marketing-only opt-out: stops promotional templates but leaves utility and
+ * authentication messages (order updates, OTPs) flowing. The contact stays
+ * 'active' because they have not withdrawn consent entirely.
+ */
+function recordMarketingOptOut(id, userId) {
+  const res = getDb().prepare(
+    `UPDATE contacts SET marketingOptOutAt = ?, updatedAt = ? WHERE id = ? AND userId = ? AND isActive = 1`)
+    .run(now(), now(), id, userId);
+  return res.changes > 0;
 }
 
 // Webhook path: an inbound message opens/extends the 24h service window.
@@ -246,9 +280,9 @@ function softDelete(id, userId) {
 
 module.exports = {
   listForUser, listAudience, listForExport, bulkCreate,
-  findActiveByPhone, findActiveByDigits,
+  findActiveByPhone, findActiveByDigits, findByIdForUser,
   countForUser, countAudience, countExcludedFromAudience,
-  recordOptIn, recordOptOut, bulkRecordOptIn, countWithoutConsent, touchInbound,
+  recordOptIn, recordOptOut, recordMarketingOptOut, bulkRecordOptIn, countWithoutConsent, touchInbound,
   create, update, softDelete, mapRow,
   SERVICE_WINDOW_MS,
 };

@@ -67,7 +67,7 @@ async function sendWithRetry(fn) {
   }
 }
 
-async function runBroadcast(b, account, audience, template) {
+async function runBroadcast(b, account, audience, template, category) {
   let sent = 0, failed = 0, skipped = 0;
   let abortReason = null;
 
@@ -80,6 +80,11 @@ async function runBroadcast(b, account, audience, template) {
         skipped++;
         continue;
       }
+      // Marketing consent can be withdrawn separately, and mid-run.
+      if (category === 'marketing' && !fresh.acceptsMarketing) {
+        skipped++;
+        continue;
+      }
 
       const rowId = bmsgs.createPending(b._id, b.userId, contact);
       const components = wa.buildTemplateComponents(template, valuesFor(contact));
@@ -88,10 +93,10 @@ async function runBroadcast(b, account, audience, template) {
 
       if (result.ok) {
         sent++;
-        bmsgs.markResult(rowId, { wamid: result.wamid, status: 'sent' });
+        bmsgs.markResult(rowId, { wamid: result.wamid, status: 'sent', billingCategory: category });
       } else {
         failed++;
-        bmsgs.markResult(rowId, { status: 'failed', error: result.error, errorCode: result.code });
+        bmsgs.markResult(rowId, { status: 'failed', error: result.error, errorCode: result.code, billingCategory: category });
 
         // Some failures mean the rest of the audience will fail the same way —
         // stop rather than burning thousands of messages and the account's quality.
@@ -185,8 +190,13 @@ function sendNow(broadcastId, userId) {
     };
   }
 
-  // Who receives it? The audience query already excludes anyone without opt-in.
-  const audience = contacts.listAudience(userId, b.audienceTag);
+  /*
+   * Who receives it? The audience query excludes anyone without opt-in, and
+   * for a MARKETING template additionally excludes anyone who opted out of
+   * marketing specifically.
+   */
+  const category = (template.category || 'marketing').toLowerCase();
+  const audience = contacts.listAudience(userId, b.audienceTag, 5000, category);
   if (!audience.length) {
     const excluded = contacts.countExcludedFromAudience(userId, b.audienceTag);
     return {
@@ -199,16 +209,23 @@ function sendNow(broadcastId, userId) {
 
   /*
    * Messaging tier: a number may only start business-initiated conversations
-   * with N unique recipients per rolling 24 hours. Going over burns messages
-   * and hurts quality, so refuse rather than fail thousands of sends.
+   * with N unique recipients per ROLLING 24 hours — across every broadcast,
+   * not per broadcast. Count who has already been messaged in the window so a
+   * sequence of small blasts can't quietly blow through the tier.
    */
   const limit = account.messagingLimit || 250;
-  if (audience.length > limit) {
+  const alreadyMessaged = bmsgs.recipientsLast24h(userId);
+  const freshRecipients = audience.filter(c => !alreadyMessaged.has(c.phone)).length;
+  const wouldTotal = alreadyMessaged.size + freshRecipients;
+  if (wouldTotal > limit) {
+    const remaining = Math.max(0, limit - alreadyMessaged.size);
     return {
-      error: `This audience is ${audience.length} contacts but "${account.name}" is on a ${limit.toLocaleString()}-recipient/24h messaging tier. Narrow the audience with a tag, or split it across days. Meta raises the tier automatically as you send consistently at good quality.`,
+      error: `"${account.name}" is on a ${limit.toLocaleString()}-recipient/24h messaging tier and has already reached ${alreadyMessaged.size.toLocaleString()} unique recipients in the last 24 hours. This broadcast needs ${freshRecipients.toLocaleString()} new ones but only ${remaining.toLocaleString()} remain. Narrow the audience with a tag, or wait for the window to roll forward. Meta raises the tier automatically as you send consistently at good quality.`,
       code: 'OVER_TIER_LIMIT',
       audienceCount: audience.length,
       messagingLimit: limit,
+      usedLast24h: alreadyMessaged.size,
+      remaining,
     };
   }
 
@@ -217,7 +234,7 @@ function sendNow(broadcastId, userId) {
   inFlight.add(b._id);
   broadcasts.update(b._id, userId, { audienceCount: audience.length });
 
-  const promise = runBroadcast(b, account, audience, template);
+  const promise = runBroadcast(b, account, audience, template, category);
   return { started: true, audienceCount: audience.length, promise };
 }
 
