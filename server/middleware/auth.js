@@ -18,7 +18,8 @@ async function protect(req, res, next) {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    // Pin the algorithm rather than accepting whatever the token claims.
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
 
     const user = users.findById(decoded.id);
     if (!user) {
@@ -74,25 +75,15 @@ function requireVerified(req, res, next) {
   next();
 }
 
-// Admin only
-function adminOnly(req, res, next) {
-  if (req.user.role !== 'admin') {
-    return res.status(403).json({
-      success: false,
-      message: 'Admin access required.',
-    });
-  }
-  next();
-}
-
 // Generate JWT. Accepts a user object (preferred) or a raw id (legacy).
 function signToken(userOrId) {
   const isObj = userOrId && typeof userOrId === 'object';
   const id = isObj ? userOrId._id : userOrId;
   const tv = isObj ? (userOrId.tokenVersion || 0) : 0;
   return jwt.sign({ id, tv }, process.env.JWT_SECRET, {
+    algorithm: 'HS256',
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
   });
 }
 
-module.exports = { protect, requireVerified, adminOnly, signToken };
+module.exports = { protect, requireVerified, signToken };

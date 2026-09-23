@@ -1,5 +1,5 @@
 const { getDb, newId } = require('../config/database');
-const { SERVICE_WINDOW_MS } = require('./_constants');
+const { SERVICE_WINDOW_MS, categoryOrSafeDefault } = require('./_constants');
 const { toBool, toDate, toJson, fromJson, fromDate, now } = require('./_map');
 
 
@@ -98,7 +98,7 @@ const AUDIENCE_WHERE =
  * only opted out of promotions.
  */
 function categoryClause(category) {
-  return String(category || '').toLowerCase() === 'marketing'
+  return categoryOrSafeDefault(category) === 'marketing'
     ? ' AND marketingOptOutAt IS NULL' : '';
 }
 
@@ -132,7 +132,7 @@ function listAudience(userId, tag, limit = 5000, category) {
 function countExcludedFromAudience(userId, tag, category) {
   const db = getDb();
   // For a marketing send, a marketing opt-out is also a reason to be excluded.
-  const marketing = String(category || '').toLowerCase() === 'marketing'
+  const marketing = categoryOrSafeDefault(category) === 'marketing'
     ? ' OR marketingOptOutAt IS NOT NULL' : '';
   const base = `userId = ? AND isActive = 1 AND (optInAt IS NULL OR optOutAt IS NOT NULL OR status != 'active'${marketing})`;
   if (!tag || tag === 'all') {

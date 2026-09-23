@@ -1,5 +1,6 @@
 const { getDb, newId } = require('../config/database');
 const { toBool, toDate, toJson, fromJson, now } = require('./_map');
+const { normaliseCategory, categoryOrSafeDefault } = require('./_constants');
 
 /*
  * Message templates.
@@ -84,7 +85,7 @@ function create(data) {
   const ts = now();
   db.prepare(`INSERT INTO templates (id,userId,name,category,language,body,status,variableCount,metaStatus,components,createdAt,updatedAt)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(
-    id, data.userId, data.name.trim(), data.category || 'marketing', data.language || 'en',
+    id, data.userId, data.name.trim(), categoryOrSafeDefault(data.category), data.language || 'en',
     data.body, 'draft', countVariables(data.body), '',
     fromJson([{ type: 'BODY', text: data.body }]), ts, ts);
   return mapRow(db.prepare('SELECT * FROM templates WHERE id = ?').get(id));
@@ -135,7 +136,7 @@ function upsertFromMeta(userId, accountId, metaTemplates) {
         db.prepare(`UPDATE templates SET category = ?, body = ?, variableCount = ?, metaId = ?,
                     metaStatus = ?, rejectedReason = ?, components = ?, accountId = ?, status = ?,
                     syncedAt = ?, updatedAt = ? WHERE id = ?`)
-          .run((t.category || 'marketing').toLowerCase(), body, countVariables(variableText(components, body)), t.id || '',
+          .run(categoryOrSafeDefault(t.category), body, countVariables(variableText(components, body)), t.id || '',
                (t.status || '').toUpperCase(), t.rejected_reason || '', fromJson(components),
                accountId, (t.status || '').toLowerCase(), ts, ts, existing.id);
         updated++;
@@ -143,7 +144,7 @@ function upsertFromMeta(userId, accountId, metaTemplates) {
         db.prepare(`INSERT INTO templates (id,userId,name,category,language,body,status,variableCount,
                     metaId,metaStatus,rejectedReason,components,accountId,syncedAt,createdAt,updatedAt)
                     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-          .run(newId(), userId, t.name, (t.category || 'marketing').toLowerCase(), language, body,
+          .run(newId(), userId, t.name, categoryOrSafeDefault(t.category), language, body,
                (t.status || '').toLowerCase(), countVariables(variableText(components, body)), t.id || '',
                (t.status || '').toUpperCase(), t.rejected_reason || '', fromJson(components),
                accountId, ts, ts, ts);

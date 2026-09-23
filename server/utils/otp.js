@@ -51,6 +51,45 @@ async function sendEmailOTP(email, otp, name) {
   });
 }
 
+/*
+ * Password reset email. Carries a single-use link, not a code: only the SHA-256
+ * hash of the token is stored, so this email is the one and only place the raw
+ * token exists.
+ */
+async function sendPasswordResetEmail(email, rawToken, name, expiryMinutes) {
+  const transporter = createMailTransporter();
+  const base = (process.env.BASE_URL || '').replace(/\/+$/, '');
+  const link = `${base}/reset-password?token=${encodeURIComponent(rawToken)}`;
+
+  const html = `
+    <div style="font-family:'DM Sans',Helvetica,Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;background:#fff;border-radius:16px;border:1px solid #e8e8ed;">
+      <div style="text-align:center;margin-bottom:24px;">
+        <div style="display:inline-flex;align-items:center;justify-content:center;width:48px;height:48px;background:#25D366;border-radius:12px;margin-bottom:12px;">
+          <span style="color:#fff;font-size:24px;font-weight:bold;">W</span>
+        </div>
+        <h2 style="margin:0;color:#1d1d1f;font-size:22px;">WhatsApp Suite</h2>
+        <p style="color:#86868b;font-size:13px;margin:4px 0 0;">by AcquiHire Tech</p>
+      </div>
+      <p style="color:#1d1d1f;font-size:15px;line-height:1.5;">Hi ${name || 'there'},</p>
+      <p style="color:#6e6e73;font-size:14px;line-height:1.6;">Someone asked to reset the password for this account. Choose a new one using the button below. The link works once and expires in ${expiryMinutes} minutes.</p>
+      <div style="text-align:center;margin:28px 0;">
+        <a href="${link}" style="display:inline-block;background:#25D366;color:#fff;text-decoration:none;padding:14px 32px;border-radius:12px;font-size:15px;font-weight:600;">Choose a new password</a>
+      </div>
+      <p style="color:#86868b;font-size:12px;line-height:1.6;">If the button does not work, copy this link into your browser:<br><span style="color:#6e6e73;word-break:break-all;">${link}</span></p>
+      <p style="color:#86868b;font-size:12px;text-align:center;margin-top:20px;">If you didn't request this, ignore this email — your password will not change.</p>
+      <hr style="border:none;border-top:1px solid #e8e8ed;margin:24px 0;">
+      <p style="color:#a1a1a6;font-size:11px;text-align:center;">WhatsApp Suite by AcquiHire Tech</p>
+    </div>
+  `;
+
+  await transporter.sendMail({
+    from: `"${process.env.FROM_NAME}" <${process.env.FROM_EMAIL}>`,
+    to: email,
+    subject: 'Reset your password — WhatsApp Suite',
+    html,
+  });
+}
+
 // Send WhatsApp OTP via Meta Cloud API
 async function sendWhatsAppOTP(phone, otp) {
   const phoneNumberId = process.env.WA_PHONE_NUMBER_ID;
@@ -117,4 +156,4 @@ async function sendWhatsAppOTP(phone, otp) {
   }
 }
 
-module.exports = { generateOTP, sendEmailOTP, sendWhatsAppOTP };
+module.exports = { generateOTP, sendEmailOTP, sendPasswordResetEmail, sendWhatsAppOTP };

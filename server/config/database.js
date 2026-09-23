@@ -5,14 +5,22 @@ const crypto = require('crypto');
 
 /*
  * SQLite database — self-hosted, single file, zero external services.
- * In production the file lives at DATABASE_PATH (default: server/data/app.db).
+ *
+ * The file lives at DATABASE_PATH. The default deliberately sits OUTSIDE the
+ * application directory (../../whatsapp-suite-data relative to server/config),
+ * because anything inside it risks being published by the static file server.
+ * It previously defaulted to server/data/app.db, which the web server happily
+ * served — WAL mode means app.db-wal holds the live rows, so the whole database
+ * was downloadable over HTTP. Keep data out of any directory that is served.
+ *
  * Tests pass ':memory:' for an ephemeral in-memory DB.
  */
 
 let db;
 
 function init(dbPath) {
-  const target = dbPath || process.env.DATABASE_PATH || path.join(__dirname, '..', 'data', 'app.db');
+  const target = dbPath || process.env.DATABASE_PATH
+    || path.join(__dirname, '..', '..', '..', 'whatsapp-suite-data', 'app.db');
 
   if (target !== ':memory:') {
     const dir = path.dirname(target);
@@ -65,6 +73,8 @@ function createSchema() {
       mfaSecret TEXT,
       mfaBackupCodes TEXT DEFAULT '[]',
       deleteRequestedAt INTEGER,
+      passwordResetToken TEXT,
+      passwordResetExpiry INTEGER,
       isActive INTEGER DEFAULT 1,
       createdAt INTEGER NOT NULL,
       updatedAt INTEGER NOT NULL
@@ -295,6 +305,11 @@ const MIGRATIONS = [
   `ALTER TABLE broadcasts ADD COLUMN abortReason TEXT DEFAULT ''`,
   // Values for template variables beyond {{1}}, as JSON {"2":"...","3":"..."}.
   `ALTER TABLE broadcasts ADD COLUMN variables TEXT DEFAULT '{}'`,
+
+  // Password reset. Only the SHA-256 hash of the token is stored, so a stolen
+  // database snapshot cannot be used to reset anyone's password.
+  `ALTER TABLE users ADD COLUMN passwordResetToken TEXT`,
+  `ALTER TABLE users ADD COLUMN passwordResetExpiry INTEGER`,
 ];
 
 function runMigrations() {

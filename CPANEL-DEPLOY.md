@@ -12,8 +12,8 @@ you have this) and a domain or subdomain to point at it.
 
 **Option A (easiest): upload a ZIP**
 1. On your computer, ZIP the project folder **without** `node_modules` (cPanel installs
-   that for you). The ZIP should contain `server/`, `css/`, `js/`, `fonts/`,
-   `index.html`, `package.json`, etc.
+   that for you). The ZIP should contain `server/`, `public/` (which holds the
+   HTML, `css/`, `js/` and `fonts/`), `package.json`, etc.
 2. cPanel → **File Manager** → go to a folder like `whatsapp-suite` (create it under your
    home directory, NOT inside `public_html`).
 3. **Upload** the ZIP there and **Extract** it.
@@ -46,7 +46,8 @@ Still on the Node.js App page, find **"Environment variables"** and add these
 | `NODE_ENV` | `production` |
 | `JWT_SECRET` | *(use the long value I gave you in chat)* |
 | `ENCRYPTION_KEY` | *(use the 64-character value I gave you in chat)* |
-| `DATABASE_PATH` | `server/data/app.db` |
+| `DATABASE_PATH` | `/home/YOUR-CPANEL-USER/whatsapp-suite-data/app.db` **(must be outside the app folder — see the warning below)** |
+| `WA_APP_SECRET` | *(your Meta App Secret — the app will not start without it)* |
 | `BASE_URL` | `https://wa.acquihiretech.com` *(your URL)* |
 | `MAX_WHATSAPP_ACCOUNTS` | `25` |
 | `OTP_EXPIRY_MINUTES` | `10` |
@@ -64,6 +65,16 @@ Still on the Node.js App page, find **"Environment variables"** and add these
 | `SMTP_PASS` | *(that mailbox's password)* |
 
 Click **Save**.
+
+> **Why `DATABASE_PATH` must sit outside the app folder.** The database holds
+> password hashes, your contacts' details and your WhatsApp access tokens. Keep
+> it in a sibling folder (`whatsapp-suite-data`), never inside `whatsapp-suite`.
+> Create it once in cPanel → File Manager, at the same level as the app folder.
+
+> **Why `WA_APP_SECRET` is required.** Your webhook URL is not a secret. Without
+> the app secret there is no way to tell a real call from Meta apart from a
+> forged one, so anyone who learns the URL could fake inbound messages, opt-outs
+> and delivery reports. The app refuses to boot in production without it.
 
 ---
 
@@ -127,10 +138,45 @@ broadcast until someone visits. Fix with a keep-alive ping:
    `curl -s https://YOUR-DOMAIN/api/health > /dev/null`
 
 ## Backups & updates
-- **Backups:** your entire database is the single file `server/data/app.db`. Download it
-  from File Manager any time, or include the app folder in cPanel's backup.
+- **Backups:** the database runs in WAL mode, so **`app.db` on its own is not a
+  complete backup** — recent writes live in the sibling `app.db-wal` file, and
+  copying only `app.db` silently loses them. Back it up one of these two ways:
+
+  1. **Safest (a consistent snapshot, safe while the app is running).** In cPanel
+     → Terminal:
+     ```
+     sqlite3 /home/YOUR-CPANEL-USER/whatsapp-suite-data/app.db ".backup '/home/YOUR-CPANEL-USER/backups/app-$(date +%F).db'"
+     ```
+     Add that as a daily cron job (cPanel → Cron Jobs) and keep a week of files.
+
+  2. **Or copy all three files together** — `app.db`, `app.db-wal` and
+     `app.db-shm` — and restore all three together.
+
+  Whichever you choose, **restore once into a test app before you need it.** A
+  backup you have never restored is not yet a backup.
 - **Updates:** upload the changed files (or `git pull`), then click **Restart** on the
-  Node.js App page. Your data in `app.db` is preserved.
+  Node.js App page. Your data is preserved.
+
+### Upgrading an install from before the security fixes
+
+Two things moved. Do both, then restart:
+
+1. **Move your database out of the app folder.** Stop the app, then in cPanel →
+   Terminal:
+   ```
+   mkdir -p ~/whatsapp-suite-data
+   mv ~/whatsapp-suite/server/data/app.db*  ~/whatsapp-suite-data/
+   ```
+   (the `*` matters — it moves the `-wal` and `-shm` files too). Then set
+   `DATABASE_PATH` to `/home/YOUR-CPANEL-USER/whatsapp-suite-data/app.db`.
+
+2. **Add `WA_APP_SECRET`** to the environment variables. The app will not start
+   in production without it.
+
+Earlier versions served the whole application folder over the web, which made the
+database, the server source and the `.git` folder downloadable by anyone. If your
+install was ever publicly reachable, treat the access tokens in it as exposed:
+rotate them in Meta Business Manager, and ask users to change their passwords.
 
 ## What's NOT a third party anymore
 - ✅ Hosting: your cPanel (was Render)

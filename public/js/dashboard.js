@@ -83,7 +83,8 @@ function initNavigation() {
     team: 'Settings'
   };
 
-  navItems.forEach(item => {
+  // Sidebar items and in-card shortcuts ("View All") navigate the same way.
+  document.querySelectorAll('[data-page]').forEach(item => {
     item.addEventListener('click', e => {
       e.preventDefault();
       navigateToPage(item.dataset.page);

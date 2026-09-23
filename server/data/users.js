@@ -4,7 +4,8 @@ const { getDb, newId } = require('../config/database');
 const { toBool, fromBool, toDate, fromDate, toJson, fromJson, now } = require('./_map');
 
 const SECRET_FIELDS = ['password', 'emailOtp', 'emailOtpExpiry', 'emailOtpAttempts',
-  'phoneOtp', 'phoneOtpExpiry', 'phoneOtpAttempts', 'mfaSecret', 'mfaBackupCodes'];
+  'phoneOtp', 'phoneOtpExpiry', 'phoneOtpAttempts', 'mfaSecret', 'mfaBackupCodes',
+  'passwordResetToken', 'passwordResetExpiry'];
 
 // Map a raw DB row -> rich JS object.
 function mapRow(row) {
@@ -37,6 +38,8 @@ function mapRow(row) {
     mfaSecret: row.mfaSecret || undefined,
     mfaBackupCodes: toJson(row.mfaBackupCodes, []),
     deleteRequestedAt: toDate(row.deleteRequestedAt),
+    passwordResetToken: row.passwordResetToken || undefined,
+    passwordResetExpiry: toDate(row.passwordResetExpiry),
     isActive: toBool(row.isActive),
     createdAt: toDate(row.createdAt),
     updatedAt: toDate(row.updatedAt),
@@ -85,7 +88,7 @@ function update(id, fields) {
   const out = {};
   for (const [k, v] of Object.entries(fields)) {
     if (['isEmailVerified', 'isPhoneVerified', 'mfaEnabled', 'isActive'].includes(k)) out[k] = fromBool(v);
-    else if (['emailOtpExpiry', 'phoneOtpExpiry', 'lastLogin', 'lockUntil', 'deleteRequestedAt'].includes(k)) out[k] = fromDate(v);
+    else if (['emailOtpExpiry', 'phoneOtpExpiry', 'lastLogin', 'lockUntil', 'deleteRequestedAt', 'passwordResetExpiry'].includes(k)) out[k] = fromDate(v);
     else if (k === 'mfaBackupCodes') out[k] = fromJson(v);
     else if (v === undefined) out[k] = null;
     else out[k] = v;
@@ -109,6 +112,16 @@ async function setPassword(id, newPlain) {
   getDb().prepare('UPDATE users SET password = ?, tokenVersion = ?, updatedAt = ? WHERE id = ?')
     .run(hashed, (user.tokenVersion || 0) + 1, now(), id);
   return findById(id);
+}
+
+/*
+ * Look a user up by the SHA-256 hash of their reset token. The lookup is by
+ * hash, so the raw token only ever exists in the email we sent.
+ */
+function findByResetTokenHash(hash) {
+  if (!hash) return null;
+  return mapRow(getDb().prepare(
+    'SELECT * FROM users WHERE passwordResetToken = ? AND isActive = 1').get(hash));
 }
 
 function isLocked(user) {
@@ -141,6 +154,6 @@ function toSafeJSON(user) {
 }
 
 module.exports = {
-  create, findById, findByEmail, findByEmailOrPhone, update, setPassword,
+  create, findById, findByEmail, findByEmailOrPhone, findByResetTokenHash, update, setPassword,
   comparePassword, isLocked, incLoginAttempts, resetLoginAttempts, toSafeJSON, mapRow,
 };

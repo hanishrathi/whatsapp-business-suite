@@ -8,6 +8,7 @@ const bmsgs = require('../data/broadcastMessages');
 const sender = require('../services/sender');
 const { protect, requireVerified } = require('../middleware/auth');
 const { logAction } = require('../utils/audit');
+const { categoryOrSafeDefault } = require('../data/_constants');
 
 /*
  * Template variable values, keyed by slot number. Only positive integer keys
@@ -89,7 +90,7 @@ router.post('/', protect, requireVerified, (req, res) => {
           code: 'TEMPLATE_NOT_APPROVED',
         });
       }
-      if (t) category = (t.category || 'marketing').toLowerCase();
+      if (t) category = categoryOrSafeDefault(t.category);
     }
 
     /*
