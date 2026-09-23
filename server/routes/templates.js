@@ -5,6 +5,7 @@ const waAccounts = require('../data/whatsappAccounts');
 const wa = require('../utils/whatsapp');
 const { protect, requireVerified } = require('../middleware/auth');
 const { logAction } = require('../utils/audit');
+const { MESSAGE_CATEGORIES, normaliseCategory } = require('../data/_constants');
 
 /*
  * Templates live in Meta's WhatsApp Business Account. This app mirrors them.
@@ -28,6 +29,17 @@ router.post('/', protect, requireVerified, (req, res) => {
   try {
     const { name, body } = req.body;
     if (!name || !body) return res.status(400).json({ success: false, message: 'Template name and body are required.' });
+    /*
+     * Category decides whether the marketing opt-out applies and how Meta bills
+     * the message, so an unrecognised value is rejected rather than defaulted.
+     */
+    if (req.body.category !== undefined && !normaliseCategory(req.body.category)) {
+      return res.status(400).json({
+        success: false,
+        message: `Category must be one of: ${MESSAGE_CATEGORIES.join(', ')}.`,
+        code: 'INVALID_CATEGORY',
+      });
+    }
     const template = templates.create({ ...req.body, userId: req.user._id });
     logAction(req, 'template.create', { targetId: template._id });
     res.status(201).json({ success: true, template, message: 'Template created.' });
@@ -90,6 +102,17 @@ router.put('/:id', protect, requireVerified, (req, res) => {
     const allowed = ['name', 'category', 'language', 'body'];
     const updates = {};
     for (const k of allowed) if (req.body[k] !== undefined) updates[k] = req.body[k];
+    if (updates.category !== undefined) {
+      const cat = normaliseCategory(updates.category);
+      if (!cat) {
+        return res.status(400).json({
+          success: false,
+          message: `Category must be one of: ${MESSAGE_CATEGORIES.join(', ')}.`,
+          code: 'INVALID_CATEGORY',
+        });
+      }
+      updates.category = cat;   // store the normalised form, never raw input
+    }
     // Approval is Meta's to give. Reject attempts to set it rather than
     // silently dropping them, so nobody believes they approved a template.
     if (req.body.status !== undefined || req.body.metaStatus !== undefined) {

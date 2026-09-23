@@ -94,6 +94,22 @@ const API = {
     return result;
   },
 
+  async forgotPassword(email) {
+    return this.request('/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  },
+
+  async resetPassword(token, password) {
+    const result = await this.request('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token, password }),
+    });
+    if (result.success && result.token) this.setToken(result.token);
+    return result;
+  },
+
   async verifyEmail(otp) {
     return this.request('/auth/verify-email', {
       method: 'POST',

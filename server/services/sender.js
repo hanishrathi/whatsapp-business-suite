@@ -4,6 +4,7 @@ const templates = require('../data/templates');
 const waAccounts = require('../data/whatsappAccounts');
 const bmsgs = require('../data/broadcastMessages');
 const wa = require('../utils/whatsapp');
+const { categoryOrSafeDefault } = require('../data/_constants');
 
 /*
  * Broadcast send engine.
@@ -257,7 +258,7 @@ function sendNow(broadcastId, userId) {
    * for a MARKETING template additionally excludes anyone who opted out of
    * marketing specifically.
    */
-  const category = (template.category || 'marketing').toLowerCase();
+  const category = categoryOrSafeDefault(template.category);
   const audience = contacts.listAudience(userId, b.audienceTag, 5000, category);
   if (!audience.length) {
     const excluded = contacts.countExcludedFromAudience(userId, b.audienceTag);
@@ -333,7 +334,7 @@ function retryFailed(broadcastId, userId) {
   }
 
   // Only retry contacts who still consent — consent may have changed since.
-  const category = (template.category || 'marketing').toLowerCase();
+  const category = categoryOrSafeDefault(template.category);
   const audience = [];
   const existingRows = new Map();
   for (const row of rows) {
@@ -387,7 +388,7 @@ function buildHandoffLinks(broadcastId, userId) {
     const template = templates.findForUser(b.templateId, userId);
     if (template) {
       text = template.body;
-      category = (template.category || 'marketing').toLowerCase();
+      category = categoryOrSafeDefault(template.category);
     }
   }
   if (!text) return { error: 'This broadcast has no message text to hand off.', code: 'NO_MESSAGE' };

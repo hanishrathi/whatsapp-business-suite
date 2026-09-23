@@ -7,4 +7,3 @@ server/data/*.db-shm
 server/data/*.db-wal
 !server/data/.gitkeep
 .DS_Store
-.github/workflows/

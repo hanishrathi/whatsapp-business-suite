@@ -5,6 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>WhatsApp Business Suite — AcquiHire Tech</title>
   <meta name="description" content="Enterprise WhatsApp Business API Dashboard — Manage conversations, campaigns, templates, and analytics from one powerful interface.">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="WhatsApp Suite">
+  <meta property="og:title" content="WhatsApp Business Suite — WhatsApp Suite">
+  <meta property="og:description" content="Enterprise WhatsApp Business API Dashboard — Manage conversations, campaigns, templates, and analytics from one powerful interface.">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="WhatsApp Business Suite — WhatsApp Suite">
+  <meta name="twitter:description" content="Enterprise WhatsApp Business API Dashboard — Manage conversations, campaigns, templates, and analytics from one powerful interface.">
+  <meta name="theme-color" content="#25D366">
   <link rel="stylesheet" href="css/fonts.css">
   <link rel="stylesheet" href="css/dashboard.css">
   <script src="js/favicon.js"></script>
@@ -263,12 +271,12 @@
         <div class="card">
           <div class="card-header">
             <h3>Recent Conversations</h3>
-            <a href="#" class="card-link">View All</a>
+            <a href="#" class="card-link" data-page="conversations">View All</a>
           </div>
           <div class="conversation-list">
             <div style="padding:28px 16px;text-align:center;color:#86868b;font-size:13px;">
-              Two-way inbox is coming soon.<br>
-              For now, send campaigns from <strong>Broadcasts</strong> — delivery and read stats show up here on the dashboard.
+              No conversations yet.<br>
+              Replies from your contacts appear in <strong>Conversations</strong>, and delivery stats show up here.
             </div>
           </div>
         </div>
@@ -277,7 +285,7 @@
         <div class="card">
           <div class="card-header">
             <h3>Campaign Performance</h3>
-            <a href="#" class="card-link">All Campaigns</a>
+            <a href="#" class="card-link" data-page="broadcasts">All Campaigns</a>
           </div>
           <div class="campaign-list" id="dashCampaignList">
             <div style="padding:28px 16px;text-align:center;color:#86868b;font-size:13px;">No broadcasts sent yet.</div>

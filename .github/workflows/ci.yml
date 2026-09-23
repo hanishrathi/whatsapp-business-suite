@@ -34,4 +34,3 @@ jobs:
       - run: npm ci
       - name: Dependency vulnerability scan (high+)
         run: npm audit --audit-level=high
-        continue-on-error: true

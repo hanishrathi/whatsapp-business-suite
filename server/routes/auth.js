@@ -1,11 +1,20 @@
 const express = require('express');
 const router = express.Router();
+const crypto = require('crypto');
 const users = require('../data/users');
 const { protect, signToken } = require('../middleware/auth');
-const { generateOTP, sendEmailOTP, sendWhatsAppOTP } = require('../utils/otp');
+const { generateOTP, sendEmailOTP, sendPasswordResetEmail, sendWhatsAppOTP } = require('../utils/otp');
 const { hashToken, safeEqual, decrypt } = require('../utils/crypto');
 const { verifyToken: verifyTotp, matchBackupCode } = require('../utils/totp');
-const { logAction } = require('../utils/audit');
+const { logAction, logSystemAction } = require('../utils/audit');
+
+// Identical reply whether or not the account already exists (see register).
+const GENERIC_REGISTER_REPLY =
+  'If this email and phone are available, your account has been created. ' +
+  'Please check for your verification code, or try logging in.';
+
+// How long a password reset link stays valid.
+const RESET_EXPIRY_MINUTES = parseInt(process.env.PASSWORD_RESET_EXPIRY_MINUTES || '30', 10);
 
 const OTP_EXPIRY = parseInt(process.env.OTP_EXPIRY_MINUTES || '10', 10) * 60 * 1000;
 const MAX_OTP_ATTEMPTS = 5;
@@ -21,14 +30,15 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Password must be at least 8 characters.' });
     }
 
-    // F11: never reveal which field already exists.
+    /*
+     * Never reveal whether the email or phone is already registered — not in
+     * the message, and not in a machine-readable flag either. A `duplicate: true`
+     * field used to sit alongside this deliberately vague message, which handed
+     * an enumeration oracle to anyone reading the JSON instead of the prose.
+     */
     const existing = users.findByEmailOrPhone(email, phone);
     if (existing) {
-      return res.status(202).json({
-        success: true,
-        message: 'If this email and phone are available, your account has been created. Please check for your verification code, or try logging in.',
-        duplicate: true,
-      });
+      return res.status(202).json({ success: true, message: GENERIC_REGISTER_REPLY });
     }
 
     let user;
@@ -36,8 +46,7 @@ router.post('/register', async (req, res) => {
       user = await users.create({ name, email, phone, password, company });
     } catch (err) {
       if (err.code === 11000) {
-        return res.status(202).json({ success: true, duplicate: true,
-          message: 'If this email and phone are available, your account has been created. Please check for your verification code, or try logging in.' });
+        return res.status(202).json({ success: true, message: GENERIC_REGISTER_REPLY });
       }
       if (/must be|Invalid|required/i.test(err.message)) {
         return res.status(400).json({ success: false, message: err.message });
@@ -210,6 +219,96 @@ router.post('/resend-otp', protect, async (req, res) => {
 router.get('/me', protect, (req, res) => {
   const user = users.findById(req.user._id);
   res.json({ success: true, user: users.toSafeJSON(user) });
+});
+
+/* ===================== Password reset ===================== */
+
+/*
+ * POST /api/auth/forgot-password
+ *
+ * Always answers the same way, whether or not the address is registered —
+ * otherwise this becomes the account-enumeration oracle that register was
+ * carefully written to avoid. The token is random, single-use and stored only
+ * as a SHA-256 hash, so a database snapshot cannot be replayed into a reset.
+ */
+router.post('/forgot-password', async (req, res) => {
+  const GENERIC = 'If that email is registered, a reset link is on its way. Check your inbox and spam folder.';
+  try {
+    const { email } = req.body;
+    if (!email || typeof email !== 'string') {
+      return res.status(400).json({ success: false, message: 'Email is required.' });
+    }
+
+    const user = users.findByEmail(email);
+    if (user && user.isActive) {
+      const rawToken = crypto.randomBytes(32).toString('hex');
+      users.update(user._id, {
+        passwordResetToken: hashToken(rawToken),
+        passwordResetExpiry: new Date(Date.now() + RESET_EXPIRY_MINUTES * 60 * 1000),
+      });
+      logSystemAction('user.password_reset_requested', { userId: user._id, targetId: user._id });
+      try {
+        await sendPasswordResetEmail(user.email, rawToken, user.name, RESET_EXPIRY_MINUTES);
+      } catch (err) {
+        // A mail failure must not tell the caller the address exists.
+        console.error('Password reset email failed:', err.message);
+      }
+    }
+
+    res.json({ success: true, message: GENERIC });
+  } catch (err) {
+    console.error('Forgot password error:', err.message);
+    res.json({ success: true, message: GENERIC });
+  }
+});
+
+/*
+ * POST /api/auth/reset-password
+ *
+ * Consumes the token, sets the new password and bumps tokenVersion, which
+ * invalidates every existing session — a reset is exactly when you want other
+ * devices signed out.
+ */
+router.post('/reset-password', async (req, res) => {
+  try {
+    const { token, password } = req.body;
+    if (!token || !password) {
+      return res.status(400).json({ success: false, message: 'Reset token and new password are required.' });
+    }
+    if (typeof password !== 'string' || password.length < 8) {
+      return res.status(400).json({ success: false, message: 'Password must be at least 8 characters.' });
+    }
+
+    const user = users.findByResetTokenHash(hashToken(String(token)));
+    const expired = !user || !user.passwordResetExpiry || user.passwordResetExpiry.getTime() < Date.now();
+    if (expired) {
+      return res.status(400).json({
+        success: false,
+        message: 'This reset link is invalid or has expired. Request a new one.',
+        code: 'INVALID_RESET_TOKEN',
+      });
+    }
+
+    // setPassword bumps tokenVersion, so every previously issued JWT dies here.
+    const fresh = await users.setPassword(user._id, password);
+    // Clear the token and any login lockout — the reset proves ownership.
+    users.update(user._id, {
+      passwordResetToken: undefined,
+      passwordResetExpiry: undefined,
+      loginAttempts: 0,
+      lockUntil: undefined,
+    });
+    logSystemAction('user.password_reset_completed', { userId: user._id, targetId: user._id });
+
+    res.json({
+      success: true,
+      message: 'Password updated. You are now signed in on this device; other devices have been signed out.',
+      token: signToken(users.findById(fresh._id)),
+    });
+  } catch (err) {
+    console.error('Reset password error:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to reset password.' });
+  }
 });
 
 module.exports = router;

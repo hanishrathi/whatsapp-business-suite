@@ -1,3 +1,4 @@
+const { categoryOrSafeDefault } = require('../data/_constants');
 /*
  * WhatsApp message billing.
  *
@@ -42,9 +43,7 @@ function rates() {
  */
 function categoryFor({ isTemplate, templateCategory }) {
   if (!isTemplate) return 'service';
-  const c = String(templateCategory || 'marketing').toLowerCase();
-  if (c === 'utility' || c === 'authentication' || c === 'marketing') return c;
-  return 'marketing';
+  return categoryOrSafeDefault(templateCategory);
 }
 
 /*

@@ -1,5 +1,6 @@
 const express = require('express');
 const crypto = require('crypto');
+const env = require('../config/env');
 const router = express.Router();
 const bmsgs = require('../data/broadcastMessages');
 const msgs = require('../data/messages');
@@ -23,8 +24,11 @@ const { logSystemAction } = require('../utils/audit');
  *   Callback URL:  https://YOUR-DOMAIN/api/webhooks/whatsapp
  *   Verify token:  the value of WA_WEBHOOK_VERIFY_TOKEN in your environment
  *   Subscribe to:  messages   (covers both statuses and inbound messages)
- * Optional but recommended: set WA_APP_SECRET (Meta App secret) to verify
- * that calls really come from Meta.
+ * WA_APP_SECRET (your Meta App secret) is REQUIRED in production: it is the
+ * only thing proving a call really came from Meta. The callback URL is not a
+ * secret, so without it anyone could post forged inbound messages, fake opt-out
+ * keywords, bogus delivery receipts, or account_update events that rewrite the
+ * quality rating and messaging tier this app gates real sends on.
  */
 
 /*
@@ -69,9 +73,19 @@ router.get('/whatsapp', (req, res) => {
   res.sendStatus(403);
 });
 
+/*
+ * Verify Meta's HMAC signature over the raw request body. Fails closed: an
+ * unverifiable payload is rejected rather than trusted. Production boot already
+ * refuses to start without WA_APP_SECRET, so the only way to reach the
+ * unconfigured branch is a local development run.
+ */
 function signatureValid(req) {
   const secret = process.env.WA_APP_SECRET;
-  if (!secret) return true; // signature checking is opt-in
+  if (!secret) {
+    if (env.isProduction) return false;   // never trust an unsigned call in production
+    console.warn('WA_APP_SECRET is not set — accepting an UNVERIFIED webhook call. Development only.');
+    return true;
+  }
   const header = req.get('x-hub-signature-256') || '';
   const expected = 'sha256=' + crypto.createHmac('sha256', secret).update(req.rawBody || Buffer.alloc(0)).digest('hex');
   const a = Buffer.from(header);
