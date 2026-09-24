@@ -1,5 +1,9 @@
 node_modules/
-.env
+# Every env file is secret except the committed template. `.env` alone left
+# .env.local, .env.production and editor/backup copies like .env.bak
+# committable, each holding JWT_SECRET and ENCRYPTION_KEY in the clear.
+.env*
+!.env.example
 server/uploads/avatars/*
 !server/uploads/avatars/.gitkeep
 server/data/*.db
