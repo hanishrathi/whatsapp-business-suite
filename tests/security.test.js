@@ -5,6 +5,18 @@ const { app, resetDb, verifyUser, users } = require('./_setup');
 
 afterEach(() => resetDb());
 
+describe('Test environment is hermetic', () => {
+  /*
+   * The suite must not depend on what is in the developer's .env. It used to:
+   * a local WA_APP_SECRET made 14 webhook tests fail while CI stayed green.
+   */
+  test('env vars that change behaviour do not leak in from a local .env', () => {
+    for (const key of ['WA_APP_SECRET', 'WA_WEBHOOK_VERIFY_TOKEN', 'WA_GRAPH_BASE_URL', 'BASE_URL']) {
+      expect(process.env[key]).toBeUndefined();
+    }
+  });
+});
+
 describe('Webhook signature verification', () => {
   const body = { object: 'whatsapp_business_account', entry: [] };
 
