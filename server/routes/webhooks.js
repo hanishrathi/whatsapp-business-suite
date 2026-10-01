@@ -83,7 +83,9 @@ function signatureValid(req) {
   const secret = process.env.WA_APP_SECRET;
   if (!secret) {
     if (env.isProduction) return false;   // never trust an unsigned call in production
-    console.warn('WA_APP_SECRET is not set — accepting an UNVERIFIED webhook call. Development only.');
+    if (!env.isTest) {
+      console.warn('WA_APP_SECRET is not set — accepting an UNVERIFIED webhook call. Development only.');
+    }
     return true;
   }
   const header = req.get('x-hub-signature-256') || '';
