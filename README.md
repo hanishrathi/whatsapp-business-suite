@@ -9,7 +9,7 @@ for running it on your own machine.
 
 ## Requirements
 
-- Node.js 18 or newer (`node -v`)
+- Node.js 20.9 or newer (`node -v`)
 - No database server — SQLite is a file
 
 ## Run it locally
@@ -121,13 +121,36 @@ Then sign in at `http://localhost:4000/login`.
 ## Tests
 
 ```bash
-npm test          # 124 tests across 9 suites
+npm test          # 126 tests across 10 suites
 npm run audit     # npm audit, high severity and above
 ```
 
 The suite uses an in-memory database and mocks Meta's API. It strips
 behaviour-changing variables that your `.env` would otherwise inject, so it
 gives the same result on your machine as in CI.
+
+## The deployable build
+
+Servers run `dist/server.js`, not `server/`. It is the whole server bundled into
+one file by esbuild, so a host installs only the two packages with compiled code
+(`better-sqlite3` and `sharp`, listed in `dist/package.json`). That is about 600
+files instead of 9,000, which keeps shared hosting inside its file limit.
+
+`dist/` is committed so cPanel can deploy with a plain `git pull`. **After
+changing anything under `server/`, rebuild and commit the result:**
+
+```bash
+npm run build
+```
+
+CI rebuilds on every push and fails if the committed `dist/` is out of date, then
+boots the bundle and checks it answers. To run the build yourself the way a
+server does:
+
+```bash
+cd dist && npm install --omit=dev && cd ..
+node dist/server.js     # reads .env and public/ from the project root
+```
 
 ## Sending real messages
 
@@ -152,12 +175,14 @@ produce click-to-chat links you send yourself, rather than API calls.
 
 ```
 public/      Everything served over HTTP — HTML, css/, js/, fonts/
+dist/        Generated deployable build (npm run build) — do not edit
+scripts/     Build script
 server/
   routes/    HTTP endpoints
   services/  Send engine and scheduler
   data/      SQLite access, one module per table
   utils/     Graph API client, crypto, billing, OTP
-  config/    Database schema and migrations, environment detection
+  config/    Database schema and migrations, environment detection, paths
 tests/       Jest + supertest
 ```
 

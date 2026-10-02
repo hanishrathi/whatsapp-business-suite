@@ -6,20 +6,26 @@ Google Fonts. The database is a single SQLite file on your hosting disk.
 **What you need:** a cPanel plan with the **"Setup Node.js App"** icon (you confirmed
 you have this) and a domain or subdomain to point at it.
 
+**It fits small file limits.** Hosting plans cap how many files you may store
+(cPanel's *File Usage*). A normal Node install writes about 9,000 files. This app
+ships ready-built as one file, `dist/server.js`, so cPanel only installs the two
+packages that contain compiled code — about **600 files** in total, plus the app.
+
 ---
 
 ## Step 1 — Get the code onto your cPanel
 
-**Option A (easiest): upload a ZIP**
-1. On your computer, ZIP the project folder **without** `node_modules` (cPanel installs
-   that for you). The ZIP should contain `server/`, `public/` (which holds the
-   HTML, `css/`, `js/` and `fonts/`), `package.json`, etc.
-2. cPanel → **File Manager** → go to a folder like `whatsapp-suite` (create it under your
-   home directory, NOT inside `public_html`).
-3. **Upload** the ZIP there and **Extract** it.
-
-**Option B: Git** — cPanel → **Git Version Control** → Clone
+**Option A (recommended): Git** — cPanel → **Git Version Control** → Clone
 `https://github.com/hanishrathi/whatsapp-business-suite.git` into `whatsapp-suite`.
+Updates are then one click (**Pull**).
+
+**Option B: upload a ZIP** — the server only needs two folders:
+1. On your computer, ZIP the **`dist`** and **`public`** folders together (no
+   `node_modules` anywhere). Nothing else from the project is used at runtime.
+2. cPanel → **File Manager** → create `whatsapp-suite` in your home directory,
+   **not** inside `public_html`.
+3. **Upload** the ZIP there and **Extract** it, so you have
+   `whatsapp-suite/dist` and `whatsapp-suite/public`.
 
 ---
 
@@ -27,11 +33,12 @@ you have this) and a domain or subdomain to point at it.
 
 1. cPanel → **Setup Node.js App** → **Create Application**.
 2. Fill in:
-   - **Node.js version:** pick the highest available (18, 20, or 22).
+   - **Node.js version:** `20` or newer — pick the highest offered. (18 is too old
+     for the SQLite and image libraries.)
    - **Application mode:** `Production`
-   - **Application root:** `whatsapp-suite` (the folder from Step 1)
+   - **Application root:** `whatsapp-suite/dist` — note the **`/dist`**
    - **Application URL:** choose your domain/subdomain (e.g. `wa.acquihiretech.com`)
-   - **Application startup file:** `server/server.js`
+   - **Application startup file:** `server.js`
 3. Click **Create**.
 
 ---
@@ -80,19 +87,25 @@ Click **Save**.
 
 ## Step 4 — Install dependencies & start
 
-1. On the Node.js App page, click **"Run NPM Install"** and wait. This installs
-   everything, including the SQLite engine (it downloads a ready-made copy — no
-   compiling needed on standard cPanel Linux).
-2. Click **Restart** (or "Start App").
-3. Visit your URL — e.g. `https://wa.acquihiretech.com`. You should see the login page.
+1. On the Node.js App page, click **"Run NPM Install"** and wait. Because the
+   application root is `dist`, this installs only `better-sqlite3` (the database
+   engine) and `sharp` (profile-photo resizing). Both download ready-made copies
+   for your server — no compiling.
+2. npm also keeps a download cache that counts against your file limit. Clear it
+   once from cPanel → **Terminal**: `npm cache clean --force`
+3. Click **Restart** (or "Start App").
+4. Visit your URL — e.g. `https://wa.acquihiretech.com`. You should see the login page.
 
 > If "Run NPM Install" ever errors on `better-sqlite3`, open cPanel **Terminal**, then:
 > ```
-> cd ~/whatsapp-suite
-> source /home/USERNAME/nodevenv/whatsapp-suite/NODEVERSION/bin/activate
-> npm install --build-from-source better-sqlite3
+> source /home/USERNAME/nodevenv/whatsapp-suite/dist/NODEVERSION/bin/activate
+> cd ~/whatsapp-suite/dist
+> npm install --omit=dev --build-from-source better-sqlite3
 > ```
-> (cPanel shows the exact "source ..." line on the Node.js App page.)
+> (cPanel shows the exact "source ..." line at the top of the Node.js App page.)
+>
+> **Don't** run `npm install` in the `whatsapp-suite` folder itself — that
+> installs the developer tooling too, about 9,000 files.
 
 ---
 
@@ -154,12 +167,14 @@ broadcast until someone visits. Fix with a keep-alive ping:
 
   Whichever you choose, **restore once into a test app before you need it.** A
   backup you have never restored is not yet a backup.
-- **Updates:** upload the changed files (or `git pull`), then click **Restart** on the
-  Node.js App page. Your data is preserved.
+- **Updates:** **Pull** in Git Version Control (or re-upload `dist` and `public`),
+  then click **Restart** on the Node.js App page. `dist/server.js` arrives
+  ready-built, so there is nothing to compile. Click **Run NPM Install** first only
+  if `dist/package.json` changed. Your data is preserved.
 
 ### Upgrading an install from before the security fixes
 
-Two things moved. Do both, then restart:
+Three things changed. Do all three, then restart:
 
 1. **Move your database out of the app folder.** Stop the app, then in cPanel →
    Terminal:
@@ -172,6 +187,22 @@ Two things moved. Do both, then restart:
 
 2. **Add `WA_APP_SECRET`** to the environment variables. The app will not start
    in production without it.
+
+3. **Switch to the single-file build.** On the Node.js App page, **Edit** the app
+   and set **Application root** to `whatsapp-suite/dist` and **Application
+   startup file** to `server.js`, with Node.js `20` or newer. If your cPanel won't
+   let you edit the root, write down your environment variables, delete the app
+   (this does not touch your files or database) and create it again as in Step 2.
+   Then **Run NPM Install** and **Restart**.
+
+   Free the files the old full install used:
+   ```
+   rm -rf ~/whatsapp-suite/node_modules
+   rm -rf ~/nodevenv/whatsapp-suite/[0-9]*
+   npm cache clean --force
+   ```
+   The second line removes only the old install's per-version folders (named
+   `18`, `20`, …), not the new one under `~/nodevenv/whatsapp-suite/dist`.
 
 Earlier versions served the whole application folder over the web, which made the
 database, the server source and the `.git` folder downloadable by anyone. If your

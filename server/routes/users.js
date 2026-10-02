@@ -5,6 +5,7 @@ const sharp = require('sharp');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const paths = require('../config/paths');
 const users = require('../data/users');
 const waAccounts = require('../data/whatsappAccounts');
 const { protect, signToken } = require('../middleware/auth');
@@ -71,7 +72,7 @@ router.post('/avatar', protect, upload.single('avatar'), async (req, res) => {
     if (!req.file) return res.status(400).json({ success: false, message: 'No image file provided.' });
     // Node's own UUID — no third-party dependency needed for a filename.
     const filename = `${req.user._id}-${crypto.randomUUID()}.webp`;
-    const uploadDir = path.join(__dirname, '..', 'uploads', 'avatars');
+    const uploadDir = paths.AVATARS_DIR;
     if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
     const filePath = path.join(uploadDir, filename);
 
@@ -94,7 +95,7 @@ router.post('/avatar', protect, upload.single('avatar'), async (req, res) => {
 router.delete('/avatar', protect, (req, res) => {
   try {
     if (req.user.avatar) {
-      const filePath = path.join(__dirname, '..', 'uploads', 'avatars', path.basename(req.user.avatar));
+      const filePath = path.join(paths.AVATARS_DIR, path.basename(req.user.avatar));
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
     }
     users.update(req.user._id, { avatar: null });
@@ -160,7 +161,7 @@ router.delete('/account', protect, async (req, res) => {
     waAccounts.deleteAllForUser(user._id);
 
     if (user.avatar) {
-      const filePath = path.join(__dirname, '..', 'uploads', 'avatars', path.basename(user.avatar));
+      const filePath = path.join(paths.AVATARS_DIR, path.basename(user.avatar));
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
     }
     logAction(req, 'user.account_delete', { targetId: user._id });

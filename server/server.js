@@ -1,5 +1,6 @@
 // Load .env from the project root no matter where the process was started from.
-require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+const paths = require('./config/paths');
+require('dotenv').config({ path: paths.ENV_FILE });
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -129,7 +130,7 @@ app.use(express.urlencoded({ extended: true, limit: '200kb' }));
  * braces: serve-static's legacy default only checks the last path segment, so
  * /.git/config slipped through while /.env did not.
  */
-const PUBLIC_DIR = path.join(__dirname, '..', 'public');
+const PUBLIC_DIR = paths.PUBLIC_DIR;
 const staticOptions = {
   dotfiles: 'deny',
   index: false,
@@ -137,7 +138,7 @@ const staticOptions = {
 };
 
 app.use(express.static(PUBLIC_DIR, staticOptions));
-app.use('/uploads', express.static(path.join(__dirname, 'uploads'), { dotfiles: 'deny', index: false, maxAge: '7d' }));
+app.use('/uploads', express.static(paths.UPLOADS_DIR, { dotfiles: 'deny', index: false, maxAge: '7d' }));
 
 // API Routes
 app.use('/api/auth', authLimiter, require('./routes/auth'));
