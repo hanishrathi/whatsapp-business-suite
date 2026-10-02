@@ -34,3 +34,41 @@ jobs:
       - run: npm ci
       - name: Dependency vulnerability scan (high+)
         run: npm audit --audit-level=high
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Committed dist/ matches the source
+        run: |
+          npm run build
+          if ! git diff --quiet -- dist/; then
+            echo "::error::dist/ is out of date. Run 'npm run build' and commit the result."
+            git diff --stat -- dist/
+            exit 1
+          fi
+      # Boot the bundle the way cPanel does: only dist/ and public/, with
+      # nothing but the native packages installed.
+      - name: Bundle boots from a deploy-shaped folder
+        run: |
+          mkdir -p "$RUNNER_TEMP/deploy"
+          cp -r dist public "$RUNNER_TEMP/deploy/"
+          cd "$RUNNER_TEMP/deploy/dist"
+          npm install --omit=dev --no-audit --no-fund
+          NODE_ENV=production PORT=4100 \
+            DATABASE_PATH="$RUNNER_TEMP/data/app.db" \
+            JWT_SECRET=ci-smoke-secret \
+            ENCRYPTION_KEY=0000000000000000000000000000000000000000000000000000000000000000 \
+            WA_APP_SECRET=ci-smoke-app-secret \
+            node server.js > "$RUNNER_TEMP/server.log" 2>&1 &
+          for i in $(seq 1 30); do curl -sf localhost:4100/api/health && break; sleep 1; done
+          echo
+          curl -sf localhost:4100/api/health | grep -q '"operational"' || { cat "$RUNNER_TEMP/server.log"; exit 1; }
+          curl -sf -o /dev/null localhost:4100/login || { echo "::error::login page not served"; exit 1; }
+          code=$(curl -s -o /dev/null -w '%{http_code}' localhost:4100/dist/server.js)
+          [ "$code" = 404 ] || { echo "::error::dist/server.js is publicly served ($code)"; exit 1; }

@@ -2,12 +2,13 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const paths = require('./paths');
 
 /*
  * SQLite database — self-hosted, single file, zero external services.
  *
  * The file lives at DATABASE_PATH. The default deliberately sits OUTSIDE the
- * application directory (../../whatsapp-suite-data relative to server/config),
+ * application directory (whatsapp-suite-data beside the project folder; see config/paths.js),
  * because anything inside it risks being published by the static file server.
  * It previously defaulted to server/data/app.db, which the web server happily
  * served — WAL mode means app.db-wal holds the live rows, so the whole database
@@ -20,7 +21,7 @@ let db;
 
 function init(dbPath) {
   const target = dbPath || process.env.DATABASE_PATH
-    || path.join(__dirname, '..', '..', '..', 'whatsapp-suite-data', 'app.db');
+    || paths.DEFAULT_DATABASE_PATH;
 
   if (target !== ':memory:') {
     const dir = path.dirname(target);
