@@ -5,7 +5,7 @@
   "main": "server/server.js",
   "scripts": {
     "start": "node server/server.js",
-    "dev": "nodemon server/server.js",
+    "dev": "node --watch server/server.js",
     "test": "jest --runInBand --forceExit",
     "audit": "npm audit --audit-level=high"
   },
@@ -27,7 +27,6 @@
   },
   "devDependencies": {
     "jest": "^30.4.2",
-    "nodemon": "^3.1.4",
     "supertest": "^7.2.2"
   },
   "engines": {
