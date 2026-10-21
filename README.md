@@ -74,7 +74,7 @@ WA_APP_SECRET=<your app secret>
 ### 5. Start
 
 ```bash
-npm start          # or: npm run dev   (nodemon, reloads on change)
+npm start          # or: npm run dev   (node --watch, reloads on change)
 ```
 
 > **Shell environment variables beat `.env`.** dotenv never overwrites a
