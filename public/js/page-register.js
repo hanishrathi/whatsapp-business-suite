@@ -27,6 +27,8 @@ form.addEventListener('submit', async (e) => {
   btn.disabled = false;
 
   if (result.success) {
+    // Counted as a sign-up when /verify loads (js/analytics.js).
+    if (window.WAAnalytics) window.WAAnalytics.markRegistered();
     window.location.href = '/verify';
   } else {
     showAlert(result.message, 'error');
