@@ -1,0 +1,6 @@
+# WhatsApp Business Suite — an application, not a website.
+# It is described at https://acquihiretech.com; nothing here is meant to be
+# indexed or used as an answer source. Every response also carries
+# X-Robots-Tag: noindex, nofollow.
+User-agent: *
+Disallow: /
