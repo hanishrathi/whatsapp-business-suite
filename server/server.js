@@ -46,6 +46,17 @@ if (!env.isTest) {
   database.init();
 }
 
+// GA4 (same property as acquihiretech.com) is loaded by js/analytics.js on the
+// pre-login pages only. Its hosts are added to the policy for those paths and
+// no others, so the signed-in dashboard and reset-password keep exactly the
+// strict policy they had: with no 'unsafe-inline' here, letting
+// googletagmanager.com into script-src everywhere would hand an injected
+// <script src> a working loader on the page that shows customer data.
+// helmet resolves a function directive value per request; for every other path
+// it returns 'self' again, which a policy tolerates repeated.
+const GA_PAGES = new Set(['/login', '/login.html', '/register', '/register.html', '/verify', '/verify.html']);
+const onGaPage = (hosts) => (req) => (GA_PAGES.has(req.path) ? hosts : "'self'");
+
 // Security middleware — F6: enable a working Content-Security-Policy.
 // Allows the inline scripts/styles and Google Fonts the app actually uses,
 // while blocking injected external scripts, framing (clickjacking), and plugins.
@@ -57,14 +68,14 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       // All page scripts are external files (js/page-*.js), so inline script
       // is forbidden outright — that is what makes CSP worth having against XSS.
-      scriptSrc: ["'self'"],
+      scriptSrc: ["'self'", onGaPage('https://www.googletagmanager.com')],
       scriptSrcAttr: ["'none'"],   // blocks onclick="" and friends
       // Inline STYLE is still allowed: the markup carries style="" attributes
       // throughout. Scripts are the XSS vector that matters here.
       styleSrc: ["'self'", "'unsafe-inline'"],
       fontSrc: ["'self'"],
-      imgSrc: ["'self'", 'data:', 'blob:'],
-      connectSrc: ["'self'"],
+      imgSrc: ["'self'", 'data:', 'blob:', onGaPage('https://*.google-analytics.com https://*.googletagmanager.com')],
+      connectSrc: ["'self'", onGaPage('https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com')],
       frameAncestors: ["'none'"],
       objectSrc: ["'none'"],
       baseUri: ["'self'"],
