@@ -145,8 +145,18 @@ async function sendWhatsAppOTP(phone, otp) {
     });
 
     if (!response.ok) {
-      // Log only a redacted summary — never the token or full error body.
-      console.error('WhatsApp OTP send failed with HTTP status:', response.status);
+      // Say WHY Meta refused (e.g. 132001 template not found, 131008 missing
+      // parameter, 190 bad token), or a failed sign-up code is undiagnosable.
+      // Log only Meta's error code and message — never the token, never the
+      // full body, and never the code we just sent, even if Meta echoes it.
+      let reason = '';
+      try {
+        const body = await response.json();
+        const e = (body && body.error) || {};
+        reason = [e.code && `code ${e.code}`, e.error_subcode && `subcode ${e.error_subcode}`, e.message]
+          .filter(Boolean).join(', ').split(String(otp)).join('[code]');
+      } catch (_) { /* body was not JSON; the status below still tells you something */ }
+      console.error('WhatsApp OTP send failed with HTTP status:', response.status, reason);
       throw new Error('WhatsApp message send failed.');
     }
   } catch (err) {

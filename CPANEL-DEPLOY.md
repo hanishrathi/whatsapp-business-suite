@@ -65,6 +65,19 @@ Still on the Node.js App page, find **"Environment variables"** and add these
 | `SMTP_USER` | `noreply@acquihiretech.com` |
 | `SMTP_PASS` | *(that mailbox's password)* |
 
+**WhatsApp sign-up code (required).** Registration sends a code by email **and** a code
+by WhatsApp, and a user has to confirm both before they can add accounts or templates.
+There is no email-only mode: if these are blank in production the WhatsApp code is never
+sent and new users get stuck at the phone step. Add:
+
+| Name | Value |
+|------|-------|
+| `WA_PHONE_NUMBER_ID` | the Phone number ID of the WhatsApp number that will send the codes |
+| `WA_ACCESS_TOKEN` | a permanent token that can send from that number |
+| `WA_OTP_TEMPLATE` | the name of an **approved** English template with one variable (the code) in its body; default `otp_verification` |
+
+See "Where the Meta values come from" for how to get these.
+
 Click **Save**.
 
 > **Why `DATABASE_PATH` must sit outside the app folder.** The database holds
@@ -79,20 +92,27 @@ Click **Save**.
 
 ### Where the Meta values come from
 
-Meta's developer dashboard is organised by **use cases** now, not products. An app
-created with the *Connect with customers through WhatsApp* use case does not list
-WhatsApp in "Available products"; it lives under **Use cases → Customize → Connect
-on WhatsApp** in the left menu. (Checked against Meta's docs on 22 Oct 2026; menu
-names change, so if one has moved, search the dashboard for the setting's name.)
+Meta has been reorganising this area (dashboard "use cases" instead of products, "Messaging
+account" instead of "WABA", and more), and the menus move faster than documentation. What
+follows is what **Meta's published developer pages said on 22 Oct 2026**; the dashboard you
+see may already differ. Don't guess when a step doesn't match: use "If a step doesn't match"
+below.
 
-| You need | Where to find it |
+| You need | What Meta's pages say |
 |---|---|
-| **`WA_APP_SECRET`** | App Dashboard → **App settings → Basic** → *App secret* → **Show** (it asks for your Facebook password). It must be the secret of the app your WhatsApp account is connected to. You do **not** need the App ID for this app; it is not read anywhere. |
-| **Phone Number ID** and **Messaging account ID** (what older docs call the WABA ID) | **Use cases → Customize → Connect on WhatsApp → API Setup**. You enter these under *Accounts* inside the suite, not as environment variables. |
-| **Access token** | A permanent one, from a *system user* (below). The "Generate access token" button on API Setup makes a temporary test token that expires within about a day. |
+| **`WA_APP_SECRET`** | App Dashboard → **App settings → Basic** → *App secret* → **Show** (it asks for your Facebook password). It must be the secret of the app your WhatsApp account is connected to. The **App ID is not needed**; nothing in this app reads it. |
+| **Phone number ID** (`WA_PHONE_NUMBER_ID`, and per number under *Accounts* in the suite) | App Dashboard → **WhatsApp → API Setup**, or, for an app made with the *Connect with customers through WhatsApp* use case, **Use cases → Customize → Connect on WhatsApp → API Setup**. Production numbers are added there. Meta's account-structure page does not say where the ID itself is shown, so look for a field labelled *Phone number ID* beside the number. |
+| **Messaging account ID** (older docs: *WABA ID*; the value and the `waba_id` API field are unchanged) | The same API Setup panel, or Meta Business Suite → **Settings → Accounts → Messaging accounts** → pick the account. If you have several accounts for one number, Meta's Messages API also accepts a `messaging_account_id`. |
+| **Access token** | A permanent one from a *system user* (below). The *Generate access token* button on API Setup makes a temporary test token. |
 
-**Making a permanent token** (the suite's *Accounts* page, and `WA_ACCESS_TOKEN` if you
-send sign-up codes over WhatsApp):
+**If a step doesn't match what you see.** Note the exact screen name and the button or error
+you get, and update this section (or ask whoever maintains it) rather than working around it.
+Two things that don't depend on menus: the suite's *Accounts → Test Connection* tells you
+whether a Phone Number ID and token pair actually works, and the app's error log shows Meta's
+own error text when a send is rejected.
+
+**Making a permanent token** (for the suite's *Accounts* page and for `WA_ACCESS_TOKEN`,
+which sends the sign-up codes):
 
 1. **Business settings → System users → Add**, role *Admin*.
 2. **Assign assets** → your app → **Manage app**.
@@ -100,6 +120,16 @@ send sign-up codes over WhatsApp):
    Meta Business Suite does not copy access from one to the other; do both.
 4. **Generate token** → pick the app and the longest expiry offered → tick
    `business_management`, `whatsapp_business_management` and `whatsapp_business_messaging`.
+
+**The sign-up code template (`WA_OTP_TEMPLATE`).** The app sends the template in English
+(`en`) with the code twice: as the one variable in the **body**, and as the parameter of a
+**URL button at index 0**. That is the shape Meta's *copy code* authentication templates
+take, so create an **Authentication** template with a copy-code button, wait for approval,
+and put its exact name in `WA_OTP_TEMPLATE`. I could not re-confirm Meta's current sending
+format from its published pages, so if a code never arrives, read the app's error log:
+the line `WhatsApp OTP send failed with HTTP status: ...` ends with Meta's error code and
+message (for example `132001` template not found, `131008` a required parameter missing,
+`190` a bad token). Fix that, then try registering again.
 
 **Add a payment method.** Since 1 Oct 2026 Meta charges for service replies as well as
 templates, and its pricing notice says a business **with no payment method on file by
