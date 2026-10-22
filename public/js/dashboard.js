@@ -613,24 +613,34 @@ function renderSpend(spend) {
   const el = document.getElementById('spendPanel');
   if (!el || !spend) return;
 
+  const money = n => formatMoney(n, spend.currency);
   const rows = (spend.lines || []).filter(l => l.count > 0);
-  const notice = !spend.serviceBillingActive && spend.daysUntilServiceBilling > 0 && spend.counts.service
-    ? `<div style="margin-bottom:12px;padding:10px 12px;background:#FFF4E5;border:1px solid #FFE08A;border-radius:10px;font-size:12px;line-height:1.5;color:#6b5700;">
+  const noteStyle = 'margin-bottom:12px;padding:10px 12px;background:#FFF4E5;border:1px solid #FFE08A;border-radius:10px;font-size:12px;line-height:1.5;color:#6b5700;';
+  const countdown = !spend.serviceBillingActive && spend.daysUntilServiceBilling > 0 && spend.counts.service
+    ? `<div style="${noteStyle}">
          <strong>${spend.daysUntilServiceBilling} day${spend.daysUntilServiceBilling === 1 ? '' : 's'}</strong>
          until free-form service replies become billable (1 Oct 2026). You have sent
          <strong>${spend.counts.service.toLocaleString()}</strong> this month — those would be charged
          above the first ${spend.serviceFreeAllowance.toLocaleString()}/number/month.
        </div>` : '';
+  // Meta only bills delivered messages, so sent-but-unconfirmed ones are left out of the estimate.
+  const unconfirmed = spend.unconfirmed > 0
+    ? `<div style="${noteStyle}">
+         <strong>${spend.unconfirmed.toLocaleString()}</strong> message${spend.unconfirmed === 1 ? ' is' : 's are'}
+         sent but not yet confirmed delivered, so not counted below (Meta bills delivered messages only).
+         If this never goes down, the delivery webhook isn't set up — see the setup guide, step 7.
+       </div>` : '';
+  const notice = countdown + unconfirmed;
 
   if (!rows.length) {
-    el.innerHTML = notice + `<div style="padding:16px 4px;color:#86868b;font-size:13px;">No billable messages this month.</div>`;
+    el.innerHTML = notice + `<div style="padding:16px 4px;color:#86868b;font-size:13px;">No delivered, billable messages this month.</div>`;
     return;
   }
 
   el.innerHTML = notice + `
     <table style="width:100%;border-collapse:collapse;font-size:13px;">
       <thead><tr style="text-align:left;color:#86868b;font-size:11px;text-transform:uppercase;letter-spacing:.04em;">
-        <th style="padding:6px 0;">Category</th><th style="text-align:right;">Sent</th>
+        <th style="padding:6px 0;">Category</th><th style="text-align:right;">Delivered</th>
         <th style="text-align:right;">Billable</th><th style="text-align:right;">Est. cost</th>
       </tr></thead>
       <tbody>
@@ -639,16 +649,19 @@ function renderSpend(spend) {
             <td style="padding:8px 0;text-transform:capitalize;">${escapeHtml(l.category)}</td>
             <td style="text-align:right;">${l.count.toLocaleString()}</td>
             <td style="text-align:right;color:${l.billableCount ? '#1d1d1f' : '#86868b'}">${l.billableCount.toLocaleString()}</td>
-            <td style="text-align:right;">$${l.cost.toFixed(2)}</td>
+            <td style="text-align:right;">${money(l.cost)}</td>
           </tr>`).join('')}
         <tr style="border-top:2px solid #e8e8ed;font-weight:700;">
           <td style="padding:8px 0;">Total</td><td></td><td></td>
-          <td style="text-align:right;">$${(spend.total || 0).toFixed(2)}</td>
+          <td style="text-align:right;">${money(spend.total || 0)}</td>
         </tr>
       </tbody>
     </table>
     <p style="margin:10px 0 0;font-size:11px;color:#a1a1a6;line-height:1.5;">
-      Indicative only — Meta's rates vary by recipient market. Set WA_RATE_* in your environment to match your own pricing.
+      ${spend.usingDefaultRates
+        ? `These use placeholder rates in ${esc(spend.currency)}. Copy your rates from Meta's rate card into WA_RATE_* (and set WA_RATE_CURRENCY) so they match your invoice.`
+        : `Estimate in ${esc(spend.currency)}: one rate per category, where Meta prices by the recipient's country.`}
+      The first ${spend.serviceFreeAllowance.toLocaleString()} service replies a month are free on each business number.
     </p>`;
 }
 

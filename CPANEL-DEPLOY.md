@@ -53,6 +53,7 @@ Still on the Node.js App page, find **"Environment variables"** and add these
 | `OTP_EXPIRY_MINUTES` | `10` |
 | `FROM_EMAIL` | `noreply@acquihiretech.com` |
 | `FROM_NAME` | `WhatsApp Suite by AcquiHire Tech` |
+| `WA_RATE_CURRENCY` + `WA_RATE_MARKETING` / `_UTILITY` / `_AUTHENTICATION` | *(optional)* your billing currency and per-message rates, so the spend estimate matches your invoice. See "Billing" below. |
 
 **Email OTP (so users get verification codes):** create an email account in cPanel
 (e.g. `noreply@acquihiretech.com`), then also add:
@@ -75,6 +76,44 @@ Click **Save**.
 > the app secret there is no way to tell a real call from Meta apart from a
 > forged one, so anyone who learns the URL could fake inbound messages, opt-outs
 > and delivery reports. The app refuses to boot in production without it.
+
+### Where the Meta values come from
+
+Meta's developer dashboard is organised by **use cases** now, not products. An app
+created with the *Connect with customers through WhatsApp* use case does not list
+WhatsApp in "Available products"; it lives under **Use cases → Customize → Connect
+on WhatsApp** in the left menu. (Checked against Meta's docs on 22 Oct 2026; menu
+names change, so if one has moved, search the dashboard for the setting's name.)
+
+| You need | Where to find it |
+|---|---|
+| **`WA_APP_SECRET`** | App Dashboard → **App settings → Basic** → *App secret* → **Show** (it asks for your Facebook password). It must be the secret of the app your WhatsApp account is connected to. You do **not** need the App ID for this app; it is not read anywhere. |
+| **Phone Number ID** and **Messaging account ID** (what older docs call the WABA ID) | **Use cases → Customize → Connect on WhatsApp → API Setup**. You enter these under *Accounts* inside the suite, not as environment variables. |
+| **Access token** | A permanent one, from a *system user* (below). The "Generate access token" button on API Setup makes a temporary test token that expires within about a day. |
+
+**Making a permanent token** (the suite's *Accounts* page, and `WA_ACCESS_TOKEN` if you
+send sign-up codes over WhatsApp):
+
+1. **Business settings → System users → Add**, role *Admin*.
+2. **Assign assets** → your app → **Manage app**.
+3. **Assign assets** again → your **WhatsApp account** and your **Messaging account**.
+   Meta Business Suite does not copy access from one to the other; do both.
+4. **Generate token** → pick the app and the longest expiry offered → tick
+   `business_management`, `whatsapp_business_management` and `whatsapp_business_messaging`.
+
+**Add a payment method.** Since 1 Oct 2026 Meta charges for service replies as well as
+templates, and its pricing notice says a business **with no payment method on file by
+30 Sep 2026 stops getting its service messages delivered.** If yours is not set up, do it
+now. Per Meta's help pages (these move around, so follow the dashboard if it differs):
+
+- **Business settings → Payment methods → Add**, then either add a credit card or
+  *Apply for monthly invoicing* (a credit line; Meta may ask for your business registration).
+- **Business settings → Accounts → WhatsApp accounts** → pick the account → **Settings →
+  Edit**, and attach the payment method to it.
+- Invoices then arrive by email monthly, due within 30 days, and show under
+  **Billing and payments**.
+
+See "Billing" below.
 
 ---
 
@@ -118,16 +157,31 @@ database. (Ask me and I'll add an admin tool when you need it.)
 
 ---
 
-## Step 7 — Get delivery receipts (after your first broadcast works)
+## Step 7 — Connect the webhook
 
-Broadcasts send without this, but "delivered/read" stats need Meta to call you back:
+Do this before you send any marketing message. Everything Meta tells you arrives here:
+**delivery receipts**, **inbound messages**, and the **STOP replies** your recipients send.
+Without the webhook the suite never sees a STOP, so it cannot honour opt-outs, which
+Meta's policy requires and which can get a number restricted. The spend estimate also
+needs it: Meta bills delivered messages only, and "delivered" only arrives here.
 
 1. Add env var `WA_WEBHOOK_VERIFY_TOKEN` = any random string (e.g. from
-   `node -e "console.log(require('crypto').randomBytes(16).toString('hex'))"`) and Restart.
-2. In **developers.facebook.com** → your app → **WhatsApp → Configuration**, set:
+   `openssl rand -hex 16`) and Restart.
+2. In **developers.facebook.com** → your app → **Use cases → Customize → Configuration**
+   (older apps: **WhatsApp → Configuration**), set:
    - **Callback URL:** `https://YOUR-DOMAIN/api/webhooks/whatsapp`
    - **Verify token:** the same random string
-   Click **Verify and save**, then subscribe to the **messages** webhook field.
+   Click **Verify and save**, then subscribe to the **messages** field.
+3. Make sure the app is in **Live** mode. In Development mode Meta does not send
+   some webhooks.
+4. Use the dashboard's test-payload button to send one, and check that the suite
+   answers 200.
+
+Meta retries a failed delivery for up to 7 days, so a short outage can later
+deliver duplicates; the suite ignores a repeat of an event it has already seen.
+Calls are signed with your app secret, which is why `WA_APP_SECRET` is mandatory:
+if every webhook is rejected, the secret belongs to a different app than the
+one sending them.
 
 ## Step 8 — Keep scheduled broadcasts on time
 
@@ -136,6 +190,56 @@ broadcast until someone visits. Fix with a keep-alive ping:
 
 1. cPanel → **Cron Jobs** → add: every 5 minutes,
    `curl -s https://YOUR-DOMAIN/api/health > /dev/null`
+
+## Billing: what Meta charges and what the dashboard estimates
+
+From Meta's pricing page (checked 22 Oct 2026; Meta may change rates on the first day
+of any quarter, so check the live page):
+
+- Meta charges for **delivered** messages only, never for ones merely sent, and never
+  for messages people send to you.
+- Every message has one category: **marketing**, **utility** or **authentication**
+  (templates), or **service** (a free-form reply inside the 24-hour window).
+- Since **1 Oct 2026** service replies are charged too, and so are utility templates
+  sent inside an open window. **Each business phone number** gets one free tier of
+  **1,000 delivered service messages a month**; it does not roll over.
+- The recipient's **country calling code** decides which market's rate applies.
+- Messages inside a *free entry point window* (for example from a click-to-WhatsApp
+  ad) are not charged.
+- Rate cards are published as CSV/PDF **per billing currency** (INR is available). Your
+  account's currency is fixed when it is created.
+
+The dashboard's **Estimated spend** follows those rules but is only an estimate:
+it uses **one rate per category for every recipient**, where Meta prices by country,
+and it cannot see free entry point windows, so it can read high or low. To make it
+match your invoice:
+
+1. Open your rate card on Meta's [pricing page](https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing)
+   in **your billing currency** (INR for most Indian accounts).
+2. Set `WA_RATE_CURRENCY` (e.g. `INR`) and `WA_RATE_MARKETING`, `WA_RATE_UTILITY`,
+   `WA_RATE_AUTHENTICATION` to your main market's per-message rates. Service uses the
+   utility rate unless you set `WA_RATE_SERVICE`.
+3. Restart. Until all three rates are set the dashboard says it is using placeholder
+   rates; those defaults are US dollars and are not Meta's rates for any market.
+
+`WA_SERVICE_FREE_ALLOWANCE` (default `1000`) only needs changing if Meta changes the
+free tier.
+
+## Meta's rules for the messages you send
+
+These are Meta's, not this app's, and they change; read the current text before you
+launch a campaign: the [Business Policy](https://business.whatsapp.com/policy) and
+[opt-in guide](https://developers.facebook.com/documentation/business-messaging/whatsapp/getting-opt-in).
+
+- Only message people who have **opted in**, and make the opt-in say who you are.
+  Honour opt-outs (the suite does this for STOP once the webhook in Step 7 is live).
+- Some categories are restricted (for example medical and healthcare products,
+  currency, dating), and regulated-vertical messages may not go to anyone under 18.
+- Repeated violations lead to messaging blocks, then permanent disablement.
+- Meta restricts *AI Providers* offering general-purpose assistants on the platform
+  outside a few markets (from 15 Jan 2026). If you build an AI agent on top of this,
+  confirm in the [WhatsApp Business Solution Terms](https://www.whatsapp.com/legal/business-solution-terms)
+  whether your use falls under it.
 
 ## Backups & updates
 - **Backups:** the database runs in WAL mode, so **`app.db` on its own is not a

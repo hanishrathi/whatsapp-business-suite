@@ -166,20 +166,33 @@ test('account_update records a ban and marks the account errored', async () => {
   expect(acc.body.account.status).toBe('error');
 });
 
-test('dashboard reports spend with service messages free until the Oct 2026 cutover', async () => {
+test('dashboard spend counts delivered messages only, and flags the ones still unconfirmed', async () => {
   const { auth, contactId } = await setup();
   await inbound('hi').expect(200);
   await auth(request(app).post(`/api/conversations/${contactId}/reply`)).send({ body: 'hello back' });
 
-  const res = await auth(request(app).get('/api/dashboard/stats'));
-  const spend = res.body.stats.spend;
+  // Meta bills delivered messages only. The reply is 'sent' until a delivery
+  // receipt arrives, so it is not billable yet but is reported as unconfirmed.
+  let spend = (await auth(request(app).get('/api/dashboard/stats'))).body.stats.spend;
+  expect(spend.counts.service).toBe(0);
+  expect(spend.unconfirmed).toBe(1);
+
+  database.getDb().prepare("UPDATE messages SET status = 'delivered' WHERE direction = 'out'").run();
+  spend = (await auth(request(app).get('/api/dashboard/stats'))).body.stats.spend;
   expect(spend.counts.service).toBe(1);
+  expect(spend.unconfirmed).toBe(0);
+  expect(spend.currency).toBe('USD');
+  expect(spend.usingDefaultRates).toBe(true);
+
   const serviceLine = spend.lines.find(l => l.category === 'service');
-  // Before 2026-10-01 the message is counted but not charged.
   if (!spend.serviceBillingActive) {
+    // Before 2026-10-01 service messages are counted but not charged.
     expect(serviceLine.billableCount).toBe(0);
     expect(spend.daysUntilServiceBilling).toBeGreaterThan(0);
   } else {
-    expect(spend.serviceFreeAllowance).toBeGreaterThan(0);
+    // After it, the first 1,000 per business phone number a month are still free.
+    expect(spend.serviceFreeAllowance).toBe(1000);
+    expect(serviceLine.billableCount).toBe(0);
   }
 });
+

@@ -15,3 +15,18 @@ function escapeHtml(s) {
 
 // Short alias used throughout the page scripts.
 const esc = escapeHtml;
+
+/*
+ * Format an amount in an ISO 4217 currency code ("INR" -> "₹1,234.50"). The
+ * spend figures come from the server with the currency their rates are written
+ * in, so the symbol is never assumed. Falls back to "CODE 1.23" if the browser
+ * does not know the code.
+ */
+function formatMoney(amount, code) {
+  const n = Number(amount) || 0;
+  try {
+    return new Intl.NumberFormat('en', { style: 'currency', currency: code || 'USD' }).format(n);
+  } catch (e) {
+    return (code || 'USD') + ' ' + n.toFixed(2);
+  }
+}

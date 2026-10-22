@@ -24,7 +24,7 @@ if (env.isProduction) {
   const HELP = {
     JWT_SECRET: 'generate with: node -e "console.log(require(\'crypto\').randomBytes(64).toString(\'hex\'))"',
     ENCRYPTION_KEY: 'generate with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"',
-    WA_APP_SECRET: 'your Meta App Secret, from Meta App Dashboard -> Settings -> Basic. Required: it is what proves a webhook call came from Meta.',
+    WA_APP_SECRET: 'your Meta App Secret, from Meta App Dashboard -> App settings -> Basic -> App secret (the App ID is not needed). Required: it is what proves a webhook call came from Meta.',
   };
   const missing = required.filter(k => !process.env[k]);
   if (missing.length) {
