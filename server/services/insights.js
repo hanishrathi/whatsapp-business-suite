@@ -292,23 +292,33 @@ function build(userId, { days = 30 } = {}) {
   }
 
   /* --- 9. Spend --- */
+  // Delivered messages only: Meta does not charge for messages that were merely sent.
   const spendCounts = bmsgs.billingCountsForUser(userId);
-  const est = billing.estimate(spendCounts);
+  const est = billing.estimate(spendCounts, { serviceByAccount: bmsgs.serviceCountsByAccountForUser(userId) });
+  const unconfirmed = bmsgs.unconfirmedCountForUser(userId);
   const totalMsgs = Object.values(spendCounts).reduce((a, b) => a + b, 0);
-  if (totalMsgs) {
+  if (totalMsgs || unconfirmed) {
+    const actions = [];
+    if (!billing.serviceBillingActive()) {
+      actions.push(`Service replies become billable in ${billing.daysUntilServiceBilling()} days.`);
+    }
+    if (est.usingDefaultRates) {
+      actions.push(`These figures use placeholder rates. Copy your rates from Meta's rate card for your billing currency into WA_RATE_* and set WA_RATE_CURRENCY, so they match your invoice.`);
+    }
+    if (unconfirmed) {
+      actions.push(`${unconfirmed.toLocaleString()} message${unconfirmed === 1 ? ' is' : 's are'} sent but not yet confirmed delivered, so they are not counted. If this never goes down, the delivery webhook is not set up (see the setup guide, step 7).`);
+    }
     signals.push({
       key: 'spend',
       label: 'Estimated spend this month',
       value: est.total,
-      display: `$${est.total.toFixed(2)}`,
-      sub: `${totalMsgs.toLocaleString()} messages across ${est.lines.length} categor${est.lines.length === 1 ? 'y' : 'ies'}`,
+      display: billing.formatMoney(est.total, est.currency),
+      sub: `${totalMsgs.toLocaleString()} delivered message${totalMsgs === 1 ? '' : 's'} across ${est.lines.length} categor${est.lines.length === 1 ? 'y' : 'ies'}`,
       status: 'good',
-      what: 'What this month’s messages are likely to cost. Meta charges per message, and the price depends on the category: marketing costs the most, utility and authentication less, and replies inside the 24-hour window are free until 1 October 2026.',
-      impact: 'Marketing is roughly twice the price of a utility message, so the same monthly budget buys very different reach depending on what you send. The October change makes free-form replies billable after the first 1,000 per number per month — if support conversations are a large part of your volume, that is a new line on the bill.',
-      action: billing.serviceBillingActive()
-        ? null
-        : `Service replies become billable in ${billing.daysUntilServiceBilling()} days. Set WA_RATE_* to your own market rates so these figures match your invoice.`,
-      detail: { lines: est.lines, counts: spendCounts, serviceBillingActive: billing.serviceBillingActive() },
+      what: 'What this month’s delivered messages are likely to cost. Meta charges per delivered message, and the price depends on the category: marketing costs the most, utility and authentication less. Replies inside the 24-hour window are free for the first 1,000 a month on each business phone number, and charged after that since 1 October 2026.',
+      impact: 'Marketing is roughly twice the price of a utility message, so the same monthly budget buys very different reach depending on what you send. Since the October change, free-form replies past the first 1,000 per number per month are a line on the bill — if support conversations are a large part of your volume, watch it. This is an estimate: it uses one rate per category, where Meta prices by the recipient’s country.',
+      action: actions.length ? actions.join(' ') : null,
+      detail: { lines: est.lines, counts: spendCounts, currency: est.currency, unconfirmed, usingDefaultRates: est.usingDefaultRates, serviceBillingActive: billing.serviceBillingActive() },
     });
   }
 

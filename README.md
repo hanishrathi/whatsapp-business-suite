@@ -58,7 +58,7 @@ DATABASE_PATH=/absolute/path/to/whatsapp-suite-data/app.db
 JWT_SECRET=<from step 3>
 ENCRYPTION_KEY=<from step 3>
 
-# Your Meta App Secret (App Dashboard -> Settings -> Basic). Required whenever
+# Your Meta App Secret (App Dashboard -> App settings -> Basic). Required whenever
 # NODE_ENV is not "development" or "test". Any random value works for local
 # testing if you are not receiving real webhooks.
 WA_APP_SECRET=<your app secret>

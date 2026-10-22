@@ -32,18 +32,24 @@ router.get('/stats', protect, (req, res) => {
 });
 
 /*
- * Estimated WhatsApp spend for the current month.
+ * Estimated WhatsApp spend for the current month, on DELIVERED messages only
+ * (Meta does not charge for messages merely sent). Free-form service replies
+ * became billable on 2026-10-01 after each business phone number's first
+ * 1,000 a month, so the allowance is applied per number.
  *
- * Service messages (free-form replies inside the 24h window) become billable
- * on 2026-10-01, so before that date this reports them at zero but still
- * counts them — which is what makes the change visible in advance.
+ * `unconfirmed` counts messages Meta has accepted but not yet reported as
+ * delivered. They are left out of the estimate; if it never goes down, the
+ * delivery webhook is not set up and the estimate will read low.
  */
 function spendFor(userId) {
   const counts = bmsgs.billingCountsForUser(userId);
-  const estimate = billing.estimate(counts, { serviceAlreadySent: 0 });
+  const estimate = billing.estimate(counts, {
+    serviceByAccount: bmsgs.serviceCountsByAccountForUser(userId),
+  });
   return {
     counts,
     ...estimate,
+    unconfirmed: bmsgs.unconfirmedCountForUser(userId),
     serviceBillingActive: billing.serviceBillingActive(),
     daysUntilServiceBilling: billing.daysUntilServiceBilling(),
     serviceFreeAllowance: billing.SERVICE_FREE_ALLOWANCE,

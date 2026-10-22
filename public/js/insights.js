@@ -135,18 +135,20 @@
         <section class="insight-block">
           <h4>Where the money goes</h4>
           <table class="insight-table">
-            <thead><tr><th>Category</th><th>Sent</th><th>Billable</th><th>Cost</th></tr></thead>
+            <thead><tr><th>Category</th><th>Delivered</th><th>Billable</th><th>Cost</th></tr></thead>
             <tbody>
               ${s.detail.lines.map(l => `
                 <tr>
                   <td style="text-transform:capitalize">${esc(l.category)}</td>
                   <td>${l.count.toLocaleString()}</td>
                   <td>${l.billableCount.toLocaleString()}</td>
-                  <td>$${l.cost.toFixed(2)}</td>
+                  <td>${esc(formatMoney(l.cost, s.detail.currency))}</td>
                 </tr>`).join('')}
             </tbody>
           </table>
-          <p class="insight-note">Rates are estimates until you set your own market rates in the environment.</p>
+          <p class="insight-note">${s.detail.usingDefaultRates
+            ? 'These use placeholder rates. Set your own from Meta’s rate card (WA_RATE_* and WA_RATE_CURRENCY).'
+            : 'An estimate: one rate per category, where Meta prices by the recipient’s country.'}</p>
         </section>`;
     }
     if (s.key === 'quality' && s.detail && s.detail.trend) {

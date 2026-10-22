@@ -197,18 +197,27 @@ function consentStatsForUser(userId) {
  * Billable message counts for the current calendar month, by category.
  * Combines broadcast sends (templates) with conversation replies (service),
  * which is what Meta bills against.
+ *
+ * Meta charges only for DELIVERED messages ("Meta does not charge for messages
+ * sent"), so only 'delivered' and 'read' count here. A message still at 'sent'
+ * has not been confirmed delivered; see unconfirmedCountForUser.
  */
+const DELIVERED = "status IN ('delivered','read')";
+
+function monthStartMs() {
+  const d = new Date(); d.setDate(1); d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
 function billingCountsForUser(userId) {
   const db = getDb();
-  const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
-  const since = monthStart.getTime();
-  const delivered = "status IN ('sent','delivered','read')";
+  const since = monthStartMs();
 
   const counts = { marketing: 0, utility: 0, authentication: 0, service: 0 };
 
   for (const r of db.prepare(
     `SELECT billingCategory cat, COUNT(*) c FROM broadcast_messages
-      WHERE userId = ? AND ${delivered} AND createdAt >= ? GROUP BY billingCategory`)
+      WHERE userId = ? AND ${DELIVERED} AND createdAt >= ? GROUP BY billingCategory`)
     .all(userId, since)) {
     const key = r.cat || 'marketing'; // rows sent before categories were tracked
     if (counts[key] !== undefined) counts[key] += r.c;
@@ -216,7 +225,7 @@ function billingCountsForUser(userId) {
 
   for (const r of db.prepare(
     `SELECT billingCategory cat, COUNT(*) c FROM messages
-      WHERE userId = ? AND direction = 'out' AND ${delivered} AND createdAt >= ? GROUP BY billingCategory`)
+      WHERE userId = ? AND direction = 'out' AND ${DELIVERED} AND createdAt >= ? GROUP BY billingCategory`)
     .all(userId, since)) {
     const key = r.cat || 'service';
     if (counts[key] !== undefined) counts[key] += r.c;
@@ -225,9 +234,41 @@ function billingCountsForUser(userId) {
   return counts;
 }
 
+/*
+ * Delivered service messages this month, one number per business phone number
+ * (account). Meta's free tier of 1,000 service messages a month is per phone
+ * number, so the allowance has to be applied to each of these separately.
+ */
+function serviceCountsByAccountForUser(userId) {
+  return getDb().prepare(
+    `SELECT COUNT(*) c FROM messages
+      WHERE userId = ? AND direction = 'out' AND ${DELIVERED} AND createdAt >= ?
+        AND COALESCE(NULLIF(billingCategory, ''), 'service') = 'service'
+      GROUP BY COALESCE(accountId, '')`)
+    .all(userId, monthStartMs()).map(r => r.c);
+}
+
+/*
+ * Messages Meta has accepted but not yet reported as delivered, this month.
+ * They are not billed yet and are not in billingCountsForUser. If this number
+ * never goes down, the delivery webhook is not set up (delivery receipts only
+ * arrive through it), and the spend estimate will be too low.
+ */
+function unconfirmedCountForUser(userId) {
+  const db = getDb();
+  const since = monthStartMs();
+  const a = db.prepare(
+    `SELECT COUNT(*) c FROM broadcast_messages WHERE userId = ? AND status = 'sent' AND createdAt >= ?`)
+    .get(userId, since).c;
+  const b = db.prepare(
+    `SELECT COUNT(*) c FROM messages WHERE userId = ? AND direction = 'out' AND status = 'sent' AND createdAt >= ?`)
+    .get(userId, since).c;
+  return a + b;
+}
+
 module.exports = {
   createPending, markResult, advanceStatusByWamid, countsForBroadcast,
   uniqueRecipientsLast24h, recipientsLast24h, retryableFailures, resetToPending,
   syncBroadcastCounters, statsForUser, templatePerformanceForUser, consentStatsForUser,
-  billingCountsForUser,
+  billingCountsForUser, serviceCountsByAccountForUser, unconfirmedCountForUser,
 };
