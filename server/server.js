@@ -208,6 +208,8 @@ app.get('/api/health', (req, res) => {
 // SPA routes — serve HTML pages
 app.get('/login', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'login.html')));
 app.get('/register', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'register.html')));
+app.get('/terms', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'terms.html')));
+app.get('/policy', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'policy.html')));
 app.get('/verify', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'verify.html')));
 app.get('/profile', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'profile.html')));
 app.get('/reset-password', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'reset-password.html')));

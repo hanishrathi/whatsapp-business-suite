@@ -1,0 +1,17 @@
+/* Terms and Privacy pages — WhatsApp Suite */
+:root { --green: #128C7E; --text: #1d1d1f; --dim: #6e6e73; --bg: #f5f5f7; --card: #fff; --border: #e8e8ed; }
+@media (prefers-color-scheme: dark) {
+  :root { --green: #25D366; --text: #f5f5f7; --dim: #a1a1a6; --bg: #111113; --card: #1c1c1e; --border: #2c2c2e; }
+}
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.65 -apple-system, "DM Sans", "Segoe UI", sans-serif; }
+.legal { max-width: 760px; margin: 0 auto; padding: 32px 16px 64px; }
+.legal-top { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 14px; margin-bottom: 20px; }
+.legal-top a { color: var(--green); text-decoration: none; font-weight: 600; }
+.legal-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 28px 24px; }
+h1 { font-size: 28px; line-height: 1.2; margin: 0 0 4px; }
+h2 { font-size: 18px; margin: 28px 0 6px; }
+.meta { color: var(--dim); font-size: 14px; margin: 0 0 16px; }
+p, li { margin: 8px 0; }
+ul { padding-left: 22px; }
+a { color: var(--green); }
